@@ -33,6 +33,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: tools/generate-handlers/go.mod
+          cache-dependency-path: tools/generate-handlers/go.sum
       - name: Build
         working-directory: tools/generate-handlers
         env:
