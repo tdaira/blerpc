@@ -1,0 +1,4 @@
+tests:
+  blerpc.container_command:
+    tags: blerpc
+    platform_allow: native_posix

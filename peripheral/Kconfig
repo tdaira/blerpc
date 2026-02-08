@@ -1,0 +1,7 @@
+source "Kconfig.zephyr"
+
+config BLERPC_TIMEOUT_MS
+	int "Default timeout in milliseconds"
+	default 100
+	help
+	  Default timeout value reported to Central via timeout control container.

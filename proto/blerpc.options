@@ -1,0 +1,4 @@
+blerpc.EchoRequest.message        max_size:257
+blerpc.EchoResponse.message        max_size:257
+blerpc.FlashReadResponse.data      type:FT_CALLBACK
+blerpc.DataWriteRequest.data       type:FT_CALLBACK

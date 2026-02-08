@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+per-file-ignores = {"central/blerpc/generated/blerpc_pb2.py" = ["E501", "I001"]}
+
+[tool.ruff.format]
+exclude = ["central/blerpc/generated/blerpc_pb2.py"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"

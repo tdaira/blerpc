@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package blerpc;
+
+message EchoRequest {
+  string message = 1;
+}
+
+message EchoResponse {
+  string message = 1;
+}
+
+message FlashReadRequest {
+  uint32 address = 1;
+  uint32 length = 2;
+}
+
+message FlashReadResponse {
+  uint32 address = 1;
+  bytes data = 2;
+}
+
+message DataWriteRequest {
+  bytes data = 1;
+}
+
+message DataWriteResponse {
+  uint32 length = 1;
+}

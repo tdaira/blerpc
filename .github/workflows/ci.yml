@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-lint:
+    name: Python Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - name: Ruff lint
+        run: ruff check central/ peripheral_py/ scripts/
+      - name: Ruff format check
+        run: ruff format --check central/ peripheral_py/ scripts/
+
+  python-test:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install pytest pytest-asyncio protobuf
+      - name: Run unit tests
+        working-directory: central
+        run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
+
+  c-lint:
+    name: C Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: clang-format check
+        run: |
+          clang-format --dry-run --Werror \
+            peripheral/src/container.c \
+            peripheral/src/container.h \
+            peripheral/src/command.c \
+            peripheral/src/command.h \
+            peripheral/src/handlers.c \
+            peripheral/src/handlers.h \
+            peripheral/src/ble_service.c \
+            peripheral/src/ble_service.h \
+            peripheral/src/main.c \
+            peripheral/tests/test_standalone.c \
+            central_fw/src/main.c \
+            central_fw/src/ble_central.c \
+            central_fw/src/ble_central.h
+
+  c-test:
+    name: C Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run standalone tests
+        run: |
+          gcc -o /tmp/test_standalone \
+            peripheral/tests/test_standalone.c \
+            peripheral/src/container.c \
+            peripheral/src/command.c \
+            -Iperipheral/src -Wall -Wextra -Werror -std=c11
+          /tmp/test_standalone
