@@ -6,8 +6,8 @@
 #include <string.h>
 
 #include "ble_central.h"
-#include "container.h"
-#include "command.h"
+#include <blerpc_protocol/container.h>
+#include <blerpc_protocol/command.h>
 #include "blerpc.pb.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);

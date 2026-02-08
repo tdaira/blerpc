@@ -30,7 +30,9 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: pip install pytest pytest-asyncio protobuf bleak
+        run: |
+          pip install pytest pytest-asyncio protobuf bleak
+          pip install git+https://github.com/tdaira/blerpc-protocol.git
       - name: Run unit tests
         working-directory: central
         run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
@@ -43,30 +45,11 @@ jobs:
       - name: clang-format check
         run: |
           clang-format --dry-run --Werror \
-            peripheral/src/container.c \
-            peripheral/src/container.h \
-            peripheral/src/command.c \
-            peripheral/src/command.h \
-            peripheral/src/handlers.c \
-            peripheral/src/handlers.h \
             peripheral/src/ble_service.c \
             peripheral/src/ble_service.h \
+            peripheral/src/handlers.c \
+            peripheral/src/handlers.h \
             peripheral/src/main.c \
-            peripheral/tests/test_standalone.c \
             central_fw/src/main.c \
             central_fw/src/ble_central.c \
             central_fw/src/ble_central.h
-
-  c-test:
-    name: C Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build and run standalone tests
-        run: |
-          gcc -o /tmp/test_standalone \
-            peripheral/tests/test_standalone.c \
-            peripheral/src/container.c \
-            peripheral/src/command.c \
-            -Iperipheral/src -Wall -Wextra -Werror -std=c11
-          /tmp/test_standalone

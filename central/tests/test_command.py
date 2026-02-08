@@ -3,7 +3,7 @@
 import struct
 
 import pytest
-from blerpc.command import CommandPacket, CommandType
+from blerpc_protocol.command import CommandPacket, CommandType
 
 
 class TestCommandSerialize:

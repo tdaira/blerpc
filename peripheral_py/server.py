@@ -12,17 +12,17 @@ import sys
 import threading
 import time
 
-# Import blerpc protocol layers from central/blerpc/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "central"))
-
-from blerpc.command import CommandPacket, CommandType
-from blerpc.container import (
+from blerpc_protocol.command import CommandPacket, CommandType
+from blerpc_protocol.container import (
     Container,
     ContainerAssembler,
     ContainerSplitter,
     ContainerType,
     ControlCmd,
 )
+
+# Import protobuf definitions from central/blerpc/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "central"))
 from blerpc.generated import blerpc_pb2
 from bless import (
     BlessGATTCharacteristic,

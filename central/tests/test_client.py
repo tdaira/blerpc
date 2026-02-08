@@ -8,14 +8,14 @@ import asyncio
 
 import pytest
 from blerpc.client import BlerpcClient
-from blerpc.command import CommandPacket, CommandType
-from blerpc.container import (
+from blerpc.generated import blerpc_pb2
+from blerpc_protocol.command import CommandPacket, CommandType
+from blerpc_protocol.container import (
     Container,
     ContainerSplitter,
     ContainerType,
     ControlCmd,
 )
-from blerpc.generated import blerpc_pb2
 
 
 class MockTransport:

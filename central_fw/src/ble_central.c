@@ -1,5 +1,5 @@
 #include "ble_central.h"
-#include "container.h"
+#include <blerpc_protocol/container.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>

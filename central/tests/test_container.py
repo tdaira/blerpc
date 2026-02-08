@@ -3,7 +3,7 @@
 import struct
 
 import pytest
-from blerpc.container import (
+from blerpc_protocol.container import (
     ATT_OVERHEAD,
     FIRST_HEADER_SIZE,
     SUBSEQUENT_HEADER_SIZE,

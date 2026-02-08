@@ -1,6 +1,6 @@
 #include "ble_service.h"
-#include "container.h"
-#include "command.h"
+#include <blerpc_protocol/container.h>
+#include <blerpc_protocol/command.h>
 #include "handlers.h"
 
 #include <zephyr/kernel.h>

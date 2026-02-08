@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .command import CommandPacket, CommandType
-from .container import (
+from blerpc_protocol.command import CommandPacket, CommandType
+from blerpc_protocol.container import (
     Container,
     ContainerAssembler,
     ContainerSplitter,
@@ -14,6 +14,7 @@ from .container import (
     ControlCmd,
     make_timeout_request,
 )
+
 from .generated import blerpc_pb2
 from .generated.generated_client import GeneratedClientMixin
 from .transport import BleTransport
