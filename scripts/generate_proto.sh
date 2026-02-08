@@ -26,7 +26,7 @@ else
 fi
 
 # Generate handler stubs and client code
-python3 "$SCRIPT_DIR/generate_handlers.py"
+go run "$PROJECT_ROOT/tools/generate-handlers" -root "$PROJECT_ROOT"
 echo "Handler and client code generated."
 
 # Format generated Python files if ruff is available

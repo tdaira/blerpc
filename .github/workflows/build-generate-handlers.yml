@@ -1,0 +1,48 @@
+name: Build generate-handlers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/generate-handlers/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "tools/generate-handlers/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/generate-handlers/go.mod
+      - name: Build
+        working-directory: tools/generate-handlers
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          go build -trimpath -o "../../generate-handlers-${GOOS}-${GOARCH}${EXT}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generate-handlers-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: generate-handlers-*
