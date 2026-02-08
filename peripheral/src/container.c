@@ -30,7 +30,7 @@ int container_parse_header(const uint8_t *data, size_t len, struct container_hea
         out->payload_len = data[5];
         out->payload = data + CONTAINER_FIRST_HEADER_SIZE;
 
-        if (len < CONTAINER_FIRST_HEADER_SIZE + out->payload_len) {
+        if (len < (size_t)CONTAINER_FIRST_HEADER_SIZE + out->payload_len) {
             return -1;
         }
     } else {
@@ -38,7 +38,7 @@ int container_parse_header(const uint8_t *data, size_t len, struct container_hea
         out->payload_len = data[3];
         out->payload = data + CONTAINER_SUBSEQUENT_HEADER_SIZE;
 
-        if (len < CONTAINER_SUBSEQUENT_HEADER_SIZE + out->payload_len) {
+        if (len < (size_t)CONTAINER_SUBSEQUENT_HEADER_SIZE + out->payload_len) {
             return -1;
         }
     }
@@ -109,11 +109,11 @@ int container_assembler_feed(struct container_assembler *a, const struct contain
         a->received_length = 0;
         a->active = true;
 
+        if (a->total_length > CONTAINER_ASSEMBLER_BUF_SIZE) {
+            container_assembler_init(a);
+            return -1;
+        }
         if (hdr->payload_len > 0) {
-            if ((size_t)hdr->payload_len > CONTAINER_ASSEMBLER_BUF_SIZE) {
-                container_assembler_init(a);
-                return -1;
-            }
             memcpy(a->buf, hdr->payload, hdr->payload_len);
             a->received_length = hdr->payload_len;
         }

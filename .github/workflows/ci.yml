@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: pip install pytest pytest-asyncio protobuf
+        run: pip install pytest pytest-asyncio protobuf bleak
       - name: Run unit tests
         working-directory: central
         run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
