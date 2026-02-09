@@ -5,3 +5,17 @@ config BLERPC_TIMEOUT_MS
 	default 100
 	help
 	  Default timeout value reported to Central via timeout control container.
+
+config BLERPC_MAX_RESPONSE_PAYLOAD_SIZE
+	int "Maximum response payload size"
+	default 65535
+	help
+	  Maximum response payload size reported to Central via capabilities
+	  control container. The streaming encoder has no buffer limit, so this
+	  defaults to the protocol maximum (65535).
+
+config BLERPC_WORK_STACK_SIZE
+	int "Work queue stack size"
+	default MAIN_STACK_SIZE
+	help
+	  Stack size for the blerpc request processing work queue.

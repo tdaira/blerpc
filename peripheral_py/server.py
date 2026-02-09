@@ -126,6 +126,16 @@ class BlerpcPeripheral:
                     payload=struct.pack("<H", TIMEOUT_MS),
                 )
                 self._send_container_sync(resp)
+            elif container.control_cmd == ControlCmd.CAPABILITIES:
+                logger.info("Capabilities request, max_req=65535 max_resp=65535")
+                resp = Container(
+                    transaction_id=container.transaction_id,
+                    sequence_number=0,
+                    container_type=ContainerType.CONTROL,
+                    control_cmd=ControlCmd.CAPABILITIES,
+                    payload=struct.pack("<HH", 65535, 65535),
+                )
+                self._send_container_sync(resp)
             return
 
         # Feed into assembler

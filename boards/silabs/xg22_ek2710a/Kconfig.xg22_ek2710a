@@ -1,0 +1,7 @@
+# EFR32xG22E Explorer Kit (BRD2710A)
+
+# Copyright (c) 2025 blerpc project
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_XG22_EK2710A
+	select SOC_PART_NUMBER_EFR32BG22C224F512IM40

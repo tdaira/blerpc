@@ -19,13 +19,13 @@ static struct container_assembler assembler;
 
 /* Work queue for async response processing */
 static struct k_work_q blerpc_work_q;
-static K_THREAD_STACK_DEFINE(blerpc_work_stack, 4096);
+static K_THREAD_STACK_DEFINE(blerpc_work_stack, CONFIG_BLERPC_WORK_STACK_SIZE);
 
 struct request_work {
     struct k_work work;
     uint8_t transaction_id;
     size_t len;
-    uint8_t data[12288];
+    uint8_t data[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 };
 
 static struct request_work req_work;
@@ -249,6 +249,27 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
                 (uint8_t)(CONFIG_BLERPC_TIMEOUT_MS >> 8),
             };
             ctrl.payload = timeout_payload;
+            int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+            if (n > 0) {
+                ble_service_notify(ctrl_buf, (size_t)n);
+            }
+        } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES) {
+            uint8_t ctrl_buf[8];
+            struct container_header ctrl = {
+                .transaction_id = hdr.transaction_id,
+                .sequence_number = 0,
+                .type = CONTAINER_TYPE_CONTROL,
+                .control_cmd = CONTROL_CMD_CAPABILITIES,
+                .payload_len = 4,
+            };
+            uint8_t caps_payload[4];
+            uint16_t max_req = CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE;
+            uint16_t max_resp = CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE;
+            caps_payload[0] = (uint8_t)(max_req & 0xFF);
+            caps_payload[1] = (uint8_t)(max_req >> 8);
+            caps_payload[2] = (uint8_t)(max_resp & 0xFF);
+            caps_payload[3] = (uint8_t)(max_resp >> 8);
+            ctrl.payload = caps_payload;
             int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
             if (n > 0) {
                 ble_service_notify(ctrl_buf, (size_t)n);

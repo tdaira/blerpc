@@ -12,8 +12,11 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
+/* Max test payload adapts to assembler buffer size (leave headroom for headers) */
+#define MAX_TEST_PAYLOAD (CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE - 128)
+
 /* Response buffer and synchronization */
-static uint8_t response_buf[12288];
+static uint8_t response_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 static size_t response_len;
 static K_SEM_DEFINE(response_sem, 0, 1);
 
@@ -51,7 +54,7 @@ static int send_container(const uint8_t *data, size_t len, void *ctx)
 static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_len,
                     uint8_t *resp_pb, size_t resp_pb_size, size_t *resp_pb_len)
 {
-    static uint8_t cmd_buf[12288];
+    static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     uint8_t name_len = (uint8_t)strlen(cmd_name);
 
     int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, req_pb,
@@ -195,7 +198,7 @@ static int test_flash_read(uint32_t length)
     }
 
     /* RPC call */
-    static uint8_t fr_resp_buf[10240];
+    static uint8_t fr_resp_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     size_t resp_len;
     if (rpc_call("flash_read", req_buf, ostream.bytes_written, fr_resp_buf, sizeof(fr_resp_buf),
                  &resp_len) != 0) {
@@ -204,7 +207,7 @@ static int test_flash_read(uint32_t length)
     }
 
     /* Decode response */
-    static uint8_t data_buf[8192];
+    static uint8_t data_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     struct flash_read_decode_ctx decode_ctx = {
         .buf = data_buf,
         .buf_size = sizeof(data_buf),
@@ -234,10 +237,10 @@ static int test_flash_read(uint32_t length)
 
 static int test_throughput(void)
 {
-    LOG_INF("=== Throughput Test (10x flash_read 8192) ===");
+    LOG_INF("=== Throughput Test (10x flash_read %u) ===", MAX_TEST_PAYLOAD);
 
     /* Warm up */
-    if (test_flash_read(8192) != 0) {
+    if (test_flash_read(MAX_TEST_PAYLOAD) != 0) {
         LOG_ERR("Throughput warm-up failed");
         return -1;
     }
@@ -245,14 +248,14 @@ static int test_throughput(void)
     uint32_t start = k_uptime_get_32();
 
     for (int i = 0; i < 10; i++) {
-        if (test_flash_read(8192) != 0) {
+        if (test_flash_read(MAX_TEST_PAYLOAD) != 0) {
             LOG_ERR("Throughput test failed at iteration %d", i);
             return -1;
         }
     }
 
     uint32_t elapsed = k_uptime_get_32() - start;
-    uint32_t total_bytes = 10 * 8192;
+    uint32_t total_bytes = 10 * MAX_TEST_PAYLOAD;
     uint32_t kbps = (total_bytes * 1000) / (elapsed * 1024);
 
     LOG_INF("Throughput: %u bytes in %u ms = %u KB/s", total_bytes, elapsed, kbps);
@@ -309,7 +312,7 @@ static int test_data_write(uint32_t length)
     }
 
     /* Pass 2: encode */
-    static uint8_t req_buf[10240];
+    static uint8_t req_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     if (sizing.bytes_written > sizeof(req_buf)) {
         LOG_ERR("DataWrite request too large: %zu > %zu", sizing.bytes_written, sizeof(req_buf));
         return -1;
@@ -351,10 +354,10 @@ static int test_data_write(uint32_t length)
 
 static int test_write_throughput(void)
 {
-    LOG_INF("=== Write Throughput Test (10x data_write 8192) ===");
+    LOG_INF("=== Write Throughput Test (10x data_write %u) ===", MAX_TEST_PAYLOAD);
 
     /* Warm up */
-    if (test_data_write(8192) != 0) {
+    if (test_data_write(MAX_TEST_PAYLOAD) != 0) {
         LOG_ERR("Write throughput warm-up failed");
         return -1;
     }
@@ -362,14 +365,14 @@ static int test_write_throughput(void)
     uint32_t start = k_uptime_get_32();
 
     for (int i = 0; i < 10; i++) {
-        if (test_data_write(8192) != 0) {
+        if (test_data_write(MAX_TEST_PAYLOAD) != 0) {
             LOG_ERR("Write throughput test failed at iteration %d", i);
             return -1;
         }
     }
 
     uint32_t elapsed = k_uptime_get_32() - start;
-    uint32_t total_bytes = 10 * 8192;
+    uint32_t total_bytes = 10 * MAX_TEST_PAYLOAD;
     uint32_t kbps = (total_bytes * 1000) / (elapsed * 1024);
 
     LOG_INF("Write throughput: %u bytes in %u ms = %u KB/s", total_bytes, elapsed, kbps);
@@ -402,6 +405,16 @@ int main(void)
 
     LOG_INF("MTU: %u", ble_central_get_mtu());
 
+    /* Request capabilities from peripheral */
+    err = ble_central_request_capabilities();
+    if (err) {
+        LOG_WRN("Capabilities request failed (err %d), continuing without limits", err);
+    } else {
+        LOG_INF("Peripheral capabilities: max_request=%u, max_response=%u",
+                ble_central_get_max_request_payload_size(),
+                ble_central_get_max_response_payload_size());
+    }
+
     /* Allow subscription to settle */
     k_sleep(K_MSEC(200));
 
@@ -414,7 +427,7 @@ int main(void)
 
     k_sleep(K_MSEC(100));
 
-    if (test_flash_read(8192) != 0) {
+    if (test_flash_read(MAX_TEST_PAYLOAD) != 0) {
         failures++;
     }
 
@@ -426,7 +439,7 @@ int main(void)
 
     k_sleep(K_MSEC(100));
 
-    if (test_data_write(8192) != 0) {
+    if (test_data_write(MAX_TEST_PAYLOAD) != 0) {
         failures++;
     }
 

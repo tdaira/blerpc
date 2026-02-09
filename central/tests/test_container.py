@@ -12,6 +12,8 @@ from blerpc_protocol.container import (
     ContainerSplitter,
     ContainerType,
     ControlCmd,
+    make_capabilities_request,
+    make_capabilities_response,
     make_stream_end_c2p,
     make_stream_end_p2c,
     make_timeout_request,
@@ -361,3 +363,20 @@ class TestControlContainers:
     def test_stream_end_p2c(self):
         c = make_stream_end_p2c(transaction_id=3)
         assert c.control_cmd == ControlCmd.STREAM_END_P2C
+
+    def test_capabilities_request(self):
+        c = make_capabilities_request(transaction_id=7)
+        assert c.container_type == ContainerType.CONTROL
+        assert c.control_cmd == ControlCmd.CAPABILITIES
+        assert c.payload == b""
+
+    def test_capabilities_response(self):
+        c = make_capabilities_response(
+            transaction_id=7,
+            max_request_payload_size=256,
+            max_response_payload_size=65535,
+        )
+        assert c.container_type == ContainerType.CONTROL
+        assert c.control_cmd == ControlCmd.CAPABILITIES
+        assert len(c.payload) == 4
+        assert struct.unpack("<HH", c.payload) == (256, 65535)

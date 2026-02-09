@@ -7,7 +7,7 @@ without requiring BLE hardware.
 import asyncio
 
 import pytest
-from blerpc.client import BlerpcClient
+from blerpc.client import BlerpcClient, PayloadTooLargeError
 from blerpc.generated import blerpc_pb2
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
@@ -244,3 +244,31 @@ async def test_sequential_calls_increment_transaction_id():
         c = Container.deserialize(raw)
         tids.add(c.transaction_id)
     assert len(tids) == 3
+
+
+# ── Payload size limit tests ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_payload_too_large_raises():
+    """Request exceeding max_request_payload_size raises PayloadTooLargeError."""
+    transport = MockTransport()
+    client = make_client(transport)
+    client._max_request_payload_size = 50
+
+    with pytest.raises(PayloadTooLargeError):
+        await client.echo("A" * 256)
+
+
+@pytest.mark.asyncio
+async def test_no_max_payload_allows_large():
+    """Without max_request_payload_size, large payloads are allowed."""
+    transport = MockTransport()
+    client = make_client(transport)
+    client._max_request_payload_size = None
+
+    msg = "A" * 256
+    resp = blerpc_pb2.EchoResponse(message=msg)
+    transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
+    result = await client.echo(msg)
+    assert result == msg

@@ -1,0 +1,6 @@
+boards:
+  - name: xg22_ek2710a
+    full_name: EFR32xG22E Explorer Kit (BRD2710A)
+    vendor: silabs
+    socs:
+      - name: efr32bg22c224f512im40

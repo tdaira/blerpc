@@ -8,7 +8,7 @@ import time
 
 import pytest
 import pytest_asyncio
-from blerpc.client import BlerpcClient
+from blerpc.client import BlerpcClient, PayloadTooLargeError
 
 # Skip all tests if no BLE hardware is available
 pytestmark = pytest.mark.skipif(
@@ -31,6 +31,30 @@ async def client():
             await c.disconnect()
         except Exception:
             pass  # Ignore disconnect errors
+
+
+@pytest.mark.asyncio
+async def test_capabilities(client):
+    """Verify capabilities were received during connect()."""
+    print(
+        f"\nCapabilities: max_request={client.max_request_payload_size}, "
+        f"max_response={client.max_response_payload_size}"
+    )
+    assert client.max_request_payload_size is not None
+    assert client.max_response_payload_size is not None
+    assert client.max_request_payload_size > 0
+    assert client.max_response_payload_size > 0
+
+
+@pytest.mark.asyncio
+async def test_payload_too_large(client):
+    """Request exceeding max_request_payload_size raises PayloadTooLargeError."""
+    if client.max_request_payload_size is None:
+        pytest.skip("Peripheral did not report capabilities")
+    limit = client.max_request_payload_size
+    # Build a message large enough to exceed the limit after protobuf+command encoding
+    with pytest.raises(PayloadTooLargeError):
+        await client.echo("A" * limit)
 
 
 @pytest.mark.asyncio

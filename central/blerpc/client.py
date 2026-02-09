@@ -12,6 +12,7 @@ from blerpc_protocol.container import (
     ContainerSplitter,
     ContainerType,
     ControlCmd,
+    make_capabilities_request,
     make_timeout_request,
 )
 
@@ -22,6 +23,17 @@ from .transport import BleTransport
 logger = logging.getLogger(__name__)
 
 
+class PayloadTooLargeError(Exception):
+    """Raised when a request payload exceeds the peripheral's max_payload_size."""
+
+    def __init__(self, actual: int, limit: int):
+        self.actual = actual
+        self.limit = limit
+        super().__init__(
+            f"Request payload ({actual} bytes) exceeds peripheral limit ({limit} bytes)"
+        )
+
+
 class BlerpcClient(GeneratedClientMixin):
     """High-level RPC client that communicates over BLE."""
 
@@ -30,10 +42,20 @@ class BlerpcClient(GeneratedClientMixin):
         self._splitter: ContainerSplitter | None = None
         self._assembler = ContainerAssembler()
         self._timeout_s = 0.1  # Default 100ms
+        self._max_request_payload_size: int | None = None
+        self._max_response_payload_size: int | None = None
 
     @property
     def mtu(self) -> int:
         return self._transport.mtu
+
+    @property
+    def max_request_payload_size(self) -> int | None:
+        return self._max_request_payload_size
+
+    @property
+    def max_response_payload_size(self) -> int | None:
+        return self._max_response_payload_size
 
     async def connect(self, device_name: str = "blerpc", timeout: float = 10.0):
         """Connect to the blerpc peripheral."""
@@ -45,6 +67,12 @@ class BlerpcClient(GeneratedClientMixin):
             await self._request_timeout()
         except asyncio.TimeoutError:
             logger.debug("Peripheral did not respond to timeout request, using default")
+
+        # Optionally request capabilities from peripheral
+        try:
+            await self._request_capabilities()
+        except asyncio.TimeoutError:
+            logger.debug("Peripheral did not respond to capabilities request")
 
     async def _request_timeout(self):
         """Request timeout value from peripheral."""
@@ -62,6 +90,28 @@ class BlerpcClient(GeneratedClientMixin):
             self._timeout_s = timeout_ms / 1000.0
             logger.info("Peripheral timeout: %dms", timeout_ms)
 
+    async def _request_capabilities(self):
+        """Request capabilities from peripheral."""
+        tid = self._splitter.next_transaction_id()
+        req = make_capabilities_request(transaction_id=tid)
+        await self._transport.write(req.serialize())
+        data = await self._transport.read_notify(timeout=1.0)
+        resp = Container.deserialize(data)
+        if (
+            resp.container_type == ContainerType.CONTROL
+            and resp.control_cmd == ControlCmd.CAPABILITIES
+            and len(resp.payload) == 4
+        ):
+            self._max_request_payload_size = int.from_bytes(resp.payload[0:2], "little")
+            self._max_response_payload_size = int.from_bytes(
+                resp.payload[2:4], "little"
+            )
+            logger.info(
+                "Peripheral capabilities: max_request=%d, max_response=%d",
+                self._max_request_payload_size,
+                self._max_response_payload_size,
+            )
+
     async def _call(self, cmd_name: str, request_data: bytes) -> bytes:
         """Execute an RPC call and return response data."""
         # Encode command
@@ -71,6 +121,12 @@ class BlerpcClient(GeneratedClientMixin):
             data=request_data,
         )
         payload = cmd.serialize()
+
+        if (
+            self._max_request_payload_size is not None
+            and len(payload) > self._max_request_payload_size
+        ):
+            raise PayloadTooLargeError(len(payload), self._max_request_payload_size)
 
         # Split into containers and send
         containers = self._splitter.split(payload)

@@ -43,6 +43,23 @@ int ble_central_write(const uint8_t *data, size_t len);
  */
 uint16_t ble_central_get_mtu(void);
 
+/**
+ * Request capabilities from the peripheral.
+ * Blocks until response received or timeout.
+ * @return 0 on success, negative on error/timeout
+ */
+int ble_central_request_capabilities(void);
+
+/**
+ * Get peripheral's max request payload size (0 if unknown).
+ */
+uint16_t ble_central_get_max_request_payload_size(void);
+
+/**
+ * Get peripheral's max response payload size (0 if unknown).
+ */
+uint16_t ble_central_get_max_response_payload_size(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -25,6 +25,11 @@ static struct container_assembler assembler;
 /* Response callback */
 static ble_central_response_cb_t response_cb;
 
+/* Capabilities */
+static uint16_t max_request_payload_size;
+static uint16_t max_response_payload_size;
+static K_SEM_DEFINE(caps_sem, 0, 1);
+
 /* Synchronization semaphores */
 static K_SEM_DEFINE(connect_sem, 0, 1);
 static K_SEM_DEFINE(discover_sem, 0, 1);
@@ -229,6 +234,16 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
         return BT_GATT_ITER_CONTINUE;
     }
 
+    /* Handle control containers before assembler */
+    if (hdr.type == CONTAINER_TYPE_CONTROL) {
+        if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES && hdr.payload_len == 4) {
+            max_request_payload_size = (uint16_t)(hdr.payload[0] | (hdr.payload[1] << 8));
+            max_response_payload_size = (uint16_t)(hdr.payload[2] | (hdr.payload[3] << 8));
+            k_sem_give(&caps_sem);
+        }
+        return BT_GATT_ITER_CONTINUE;
+    }
+
     int rc = container_assembler_feed(&assembler, &hdr);
     if (rc == 1) {
         /* Assembly complete */
@@ -371,4 +386,44 @@ uint16_t ble_central_get_mtu(void)
         return bt_gatt_get_mtu(current_conn);
     }
     return 23;
+}
+
+int ble_central_request_capabilities(void)
+{
+    uint8_t ctrl_buf[8];
+    struct container_header ctrl = {
+        .transaction_id = 0,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_CAPABILITIES,
+        .payload_len = 0,
+    };
+    ctrl.payload = NULL;
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n < 0) {
+        return -EINVAL;
+    }
+
+    int err = ble_central_write(ctrl_buf, (size_t)n);
+    if (err) {
+        return err;
+    }
+
+    /* Wait up to 1 second for response */
+    err = k_sem_take(&caps_sem, K_SECONDS(1));
+    if (err) {
+        return -ETIMEDOUT;
+    }
+
+    return 0;
+}
+
+uint16_t ble_central_get_max_request_payload_size(void)
+{
+    return max_request_payload_size;
+}
+
+uint16_t ble_central_get_max_response_payload_size(void)
+{
+    return max_response_payload_size;
 }

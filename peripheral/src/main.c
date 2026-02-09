@@ -10,14 +10,11 @@ int main(void)
 {
     int err;
 
-    LOG_INF("blerpc peripheral starting");
-
     err = bt_enable(NULL);
     if (err) {
         LOG_ERR("Bluetooth init failed (err %d)", err);
         return err;
     }
-
     LOG_INF("Bluetooth initialized");
 
     ble_service_init();
@@ -27,8 +24,7 @@ int main(void)
         LOG_ERR("Advertising failed to start (err %d)", err);
         return err;
     }
-
-    LOG_INF("Advertising as 'blerpc'");
+    LOG_INF("Advertising started");
 
     return 0;
 }
