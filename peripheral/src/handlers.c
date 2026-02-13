@@ -8,7 +8,9 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#if IS_ENABLED(CONFIG_FLASH)
 #include <zephyr/drivers/flash.h>
+#endif
 
 LOG_MODULE_REGISTER(handlers, LOG_LEVEL_INF);
 
@@ -36,6 +38,8 @@ int handle_echo(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
 
     return 0;
 }
+
+#if IS_ENABLED(CONFIG_FLASH)
 
 struct flash_encode_ctx {
     const struct device *flash_dev;
@@ -109,6 +113,8 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
 
     return 0;
 }
+
+#endif /* CONFIG_FLASH */
 
 /* Callback for decoding DataWriteRequest.data — count bytes, discard data */
 struct data_write_decode_ctx {
