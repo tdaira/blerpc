@@ -438,3 +438,8 @@ uint8_t ble_service_next_transaction_id(void)
 {
     return transaction_counter++;
 }
+
+void ble_service_submit_work(struct k_work *work)
+{
+    k_work_submit_to_queue(&blerpc_work_q, work);
+}

@@ -62,6 +62,11 @@ void ble_service_set_stream_end_cb(ble_service_stream_end_cb_t cb);
  */
 uint8_t ble_service_next_transaction_id(void);
 
+/**
+ * Submit work to the blerpc work queue (has sufficient stack for BLE I/O).
+ */
+void ble_service_submit_work(struct k_work *work);
+
 #ifdef __cplusplus
 }
 #endif

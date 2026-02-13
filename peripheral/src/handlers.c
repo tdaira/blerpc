@@ -224,7 +224,7 @@ static void on_stream_end_c2p(uint8_t transaction_id)
 {
     (void)transaction_id;
     LOG_INF("STREAM_END_C2P received, upload_count=%u", upload_count);
-    k_work_submit(&upload_response_work);
+    ble_service_submit_work(&upload_response_work);
 }
 
 int handle_counter_upload(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
