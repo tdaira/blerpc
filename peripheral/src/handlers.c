@@ -1,5 +1,8 @@
 #include "handlers.h"
+#include "ble_service.h"
 #include "blerpc.pb.h"
+#include <blerpc_protocol/command.h>
+#include <blerpc_protocol/container.h>
 #include <pb_encode.h>
 #include <pb_decode.h>
 #include <string.h>
@@ -130,6 +133,159 @@ static bool data_write_decode_cb(pb_istream_t *stream, const pb_field_t *field, 
         len -= n;
     }
     return true;
+}
+
+/* ── counter_stream: P→C stream ───────────────────────────────────── */
+
+static int notify_send_cb(const uint8_t *data, size_t len, void *ctx)
+{
+    (void)ctx;
+    int rc;
+    for (int retries = 0; retries < 10; retries++) {
+        rc = ble_service_notify(data, len);
+        if (rc != -ENOMEM) {
+            return rc;
+        }
+        k_sleep(K_MSEC(5));
+    }
+    LOG_ERR("Notify send failed after retries: %d", rc);
+    return rc;
+}
+
+static int send_one_counter_stream_response(uint32_t seq, int32_t value)
+{
+    blerpc_CounterStreamResponse resp = blerpc_CounterStreamResponse_init_zero;
+    resp.seq = seq;
+    resp.value = value;
+
+    /* Encode protobuf to buffer */
+    uint8_t pb_buf[blerpc_CounterStreamResponse_size];
+    pb_ostream_t ostream = pb_ostream_from_buffer(pb_buf, sizeof(pb_buf));
+    if (!pb_encode(&ostream, blerpc_CounterStreamResponse_fields, &resp)) {
+        LOG_ERR("CounterStream encode failed");
+        return -1;
+    }
+
+    /* Build command response */
+    static uint8_t cmd_buf[64];
+    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_stream", 14,
+                                    pb_buf, (uint16_t)ostream.bytes_written,
+                                    cmd_buf, sizeof(cmd_buf));
+    if (cmd_len < 0) {
+        return -1;
+    }
+
+    /* Send via containers with retry */
+    uint8_t tid = ble_service_next_transaction_id();
+    uint16_t mtu = ble_service_get_mtu();
+    return container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
+                                    notify_send_cb, NULL);
+}
+
+int handle_counter_stream(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
+{
+    (void)ostream; /* Not used — we send responses directly */
+
+    blerpc_CounterStreamRequest req = blerpc_CounterStreamRequest_init_zero;
+    pb_istream_t stream = pb_istream_from_buffer(req_data, req_len);
+
+    if (!pb_decode(&stream, blerpc_CounterStreamRequest_fields, &req)) {
+        LOG_ERR("CounterStream decode failed: %s", PB_GET_ERROR(&stream));
+        return -1;
+    }
+
+    LOG_INF("CounterStream: count=%u", req.count);
+
+    /* Send N responses, each with its own transaction_id */
+    for (uint32_t i = 0; i < req.count; i++) {
+        int rc = send_one_counter_stream_response(i, (int32_t)(i * 10));
+        if (rc != 0) {
+            LOG_ERR("CounterStream send %u failed: %d", i, rc);
+            return -1;
+        }
+    }
+
+    /* Send STREAM_END_P2C */
+    uint8_t tid = ble_service_next_transaction_id();
+    ble_service_send_stream_end_p2c(tid);
+
+    /* Return -2: process_request will skip normal response */
+    return -2;
+}
+
+/* ── counter_upload: C→P stream (accumulation) ────────────────────── */
+
+static volatile uint32_t upload_count;
+
+static void send_upload_response(struct k_work *work);
+static K_WORK_DEFINE(upload_response_work, send_upload_response);
+
+static void on_stream_end_c2p(uint8_t transaction_id)
+{
+    (void)transaction_id;
+    LOG_INF("STREAM_END_C2P received, upload_count=%u", upload_count);
+    k_work_submit(&upload_response_work);
+}
+
+int handle_counter_upload(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
+{
+    (void)ostream;
+
+    blerpc_CounterUploadRequest req = blerpc_CounterUploadRequest_init_zero;
+    pb_istream_t stream = pb_istream_from_buffer(req_data, req_len);
+
+    if (!pb_decode(&stream, blerpc_CounterUploadRequest_fields, &req)) {
+        LOG_ERR("CounterUpload decode failed: %s", PB_GET_ERROR(&stream));
+        return -1;
+    }
+
+    upload_count++;
+    LOG_DBG("CounterUpload: seq=%u value=%d (total=%u)", req.seq, req.value, upload_count);
+
+    /* Return -2: no response for individual stream messages */
+    return -2;
+}
+
+static void send_upload_response(struct k_work *work)
+{
+    (void)work;
+
+    uint32_t count = upload_count;
+    upload_count = 0;
+
+    LOG_INF("CounterUpload: sending response, received_count=%u", count);
+
+    /* Encode CounterUploadResponse */
+    blerpc_CounterUploadResponse resp = blerpc_CounterUploadResponse_init_zero;
+    resp.received_count = count;
+
+    uint8_t pb_buf[blerpc_CounterUploadResponse_size];
+    pb_ostream_t ostream = pb_ostream_from_buffer(pb_buf, sizeof(pb_buf));
+    if (!pb_encode(&ostream, blerpc_CounterUploadResponse_fields, &resp)) {
+        LOG_ERR("CounterUploadResponse encode failed");
+        return;
+    }
+
+    /* Build command response */
+    static uint8_t cmd_buf[64];
+    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_upload", 14,
+                                    pb_buf, (uint16_t)ostream.bytes_written,
+                                    cmd_buf, sizeof(cmd_buf));
+    if (cmd_len < 0) {
+        LOG_ERR("Command serialize failed");
+        return;
+    }
+
+    /* Send via containers */
+    uint8_t tid = ble_service_next_transaction_id();
+    uint16_t mtu = ble_service_get_mtu();
+    container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
+                             notify_send_cb, NULL);
+}
+
+void handlers_stream_init(void)
+{
+    ble_service_set_stream_end_cb(on_stream_end_c2p);
 }
 
 int handle_data_write(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)

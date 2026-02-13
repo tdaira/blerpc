@@ -20,6 +20,7 @@ from blerpc_protocol.container import (
     ContainerSplitter,
     ContainerType,
     ControlCmd,
+    make_stream_end_p2c,
 )
 
 # Import protobuf definitions from central/blerpc/
@@ -70,9 +71,19 @@ def handle_data_write(req_data: bytes) -> bytes:
     return blerpc_pb2.DataWriteResponse(length=len(req.data)).SerializeToString()
 
 
+def handle_counter_upload(req_data: bytes) -> bytes:
+    """Accumulate counter_upload requests (called per message)."""
+    req = blerpc_pb2.CounterUploadRequest()
+    req.ParseFromString(req_data)
+    logger.debug("CounterUpload: seq=%d value=%d", req.seq, req.value)
+    # Accumulation handled in BlerpcPeripheral._upload_count
+    return None  # Signal: no response for this message
+
+
 HANDLERS["echo"] = handle_echo
 HANDLERS["flash_read"] = handle_flash_read
 HANDLERS["data_write"] = handle_data_write
+HANDLERS["counter_upload"] = handle_counter_upload
 
 
 class BlerpcPeripheral:
@@ -83,6 +94,7 @@ class BlerpcPeripheral:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._send_queue: list[tuple[bytes, int]] = []
         self._send_lock = threading.Lock()
+        self._upload_count = 0
 
     async def start(self):
         self._loop = asyncio.get_event_loop()
@@ -128,6 +140,12 @@ class BlerpcPeripheral:
                     payload=struct.pack("<H", TIMEOUT_MS),
                 )
                 self._send_container_sync(resp)
+            elif container.control_cmd == ControlCmd.STREAM_END_C2P:
+                threading.Thread(
+                    target=self._handle_stream_end_c2p,
+                    args=(container.transaction_id,),
+                    daemon=True,
+                ).start()
             elif container.control_cmd == ControlCmd.CAPABILITIES:
                 logger.info(
                     "Capabilities request, max_req=65535 max_resp=%d",
@@ -166,12 +184,22 @@ class BlerpcPeripheral:
             logger.error("Expected request, got type=%d", cmd.cmd_type)
             return
 
+        # Handle counter_stream specially (P→C stream)
+        if cmd.cmd_name == "counter_stream":
+            self._handle_counter_stream(cmd.data)
+            return
+
         handler = HANDLERS.get(cmd.cmd_name)
         if not handler:
             logger.error("Unknown command: '%s'", cmd.cmd_name)
             return
 
         resp_data = handler(cmd.data)
+
+        # counter_upload returns None (no individual response)
+        if resp_data is None:
+            self._upload_count += 1
+            return
 
         resp_cmd = CommandPacket(
             cmd_type=CommandType.RESPONSE,
@@ -202,6 +230,49 @@ class BlerpcPeripheral:
             len(containers),
             len(resp_payload),
         )
+        for c in containers:
+            self._send_container_sync(c)
+
+    def _handle_counter_stream(self, req_data: bytes):
+        """Handle counter_stream: send N responses + STREAM_END_P2C."""
+        req = blerpc_pb2.CounterStreamRequest()
+        req.ParseFromString(req_data)
+        logger.info("CounterStream: count=%d", req.count)
+
+        for i in range(req.count):
+            resp = blerpc_pb2.CounterStreamResponse(seq=i, value=i * 10)
+            resp_cmd = CommandPacket(
+                cmd_type=CommandType.RESPONSE,
+                cmd_name="counter_stream",
+                data=resp.SerializeToString(),
+            )
+            resp_payload = resp_cmd.serialize()
+            tid = self.splitter.next_transaction_id()
+            containers = self.splitter.split(resp_payload, transaction_id=tid)
+            for c in containers:
+                self._send_container_sync(c)
+
+        # Send STREAM_END_P2C
+        tid = self.splitter.next_transaction_id()
+        stream_end = make_stream_end_p2c(transaction_id=tid)
+        self._send_container_sync(stream_end)
+        logger.info("CounterStream: sent %d responses + STREAM_END_P2C", req.count)
+
+    def _handle_stream_end_c2p(self, transaction_id: int):
+        """Handle STREAM_END_C2P: send final counter_upload response."""
+        count = self._upload_count
+        self._upload_count = 0
+        logger.info("STREAM_END_C2P: sending counter_upload response, received_count=%d", count)
+
+        resp = blerpc_pb2.CounterUploadResponse(received_count=count)
+        resp_cmd = CommandPacket(
+            cmd_type=CommandType.RESPONSE,
+            cmd_name="counter_upload",
+            data=resp.SerializeToString(),
+        )
+        resp_payload = resp_cmd.serialize()
+        tid = self.splitter.next_transaction_id()
+        containers = self.splitter.split(resp_payload, transaction_id=tid)
         for c in containers:
             self._send_container_sync(c)
 

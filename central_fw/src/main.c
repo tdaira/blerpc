@@ -401,6 +401,193 @@ static int test_write_throughput(void)
     return 0;
 }
 
+/* ── Stream tests ────────────────────────────────────────────────────── */
+
+static uint32_t stream_resp_count;
+static K_SEM_DEFINE(stream_end_sem, 0, 1);
+
+static void on_stream_end(void)
+{
+    LOG_INF("STREAM_END_P2C received");
+    k_sem_give(&stream_end_sem);
+}
+
+static int test_counter_stream(void)
+{
+    LOG_INF("=== CounterStream Test ===");
+
+    const uint32_t count = 5;
+
+    /* Register stream end callback */
+    ble_central_set_stream_end_cb(on_stream_end);
+    stream_resp_count = 0;
+
+    /* Encode request */
+    blerpc_CounterStreamRequest req = blerpc_CounterStreamRequest_init_zero;
+    req.count = count;
+
+    static uint8_t req_buf[blerpc_CounterStreamRequest_size];
+    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
+    if (!pb_encode(&ostream, blerpc_CounterStreamRequest_fields, &req)) {
+        LOG_ERR("CounterStream request encode failed");
+        return -1;
+    }
+
+    /* Send request (use rpc_call's sending part manually) */
+    static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14,
+                                    req_buf, (uint16_t)ostream.bytes_written,
+                                    cmd_buf, sizeof(cmd_buf));
+    if (cmd_len < 0) {
+        LOG_ERR("Command serialize failed");
+        return -1;
+    }
+
+    uint8_t tid = next_transaction_id();
+    uint16_t mtu = ble_central_get_mtu();
+    int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, send_container, NULL);
+    if (rc < 0) {
+        LOG_ERR("Container split/send failed: %d", rc);
+        return -1;
+    }
+
+    /* Receive N responses */
+    for (uint32_t i = 0; i < count; i++) {
+        rc = k_sem_take(&response_sem, K_SECONDS(10));
+        if (rc != 0) {
+            LOG_ERR("Stream response %u timeout", i);
+            return -1;
+        }
+
+        if (rpc_error_code != 0) {
+            LOG_ERR("Stream error: 0x%02x", rpc_error_code);
+            return -1;
+        }
+
+        /* Parse response */
+        struct command_packet resp_cmd;
+        if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
+            LOG_ERR("Response command parse failed at %u", i);
+            return -1;
+        }
+
+        blerpc_CounterStreamResponse resp = blerpc_CounterStreamResponse_init_zero;
+        pb_istream_t istream = pb_istream_from_buffer(resp_cmd.data, resp_cmd.data_len);
+        if (!pb_decode(&istream, blerpc_CounterStreamResponse_fields, &resp)) {
+            LOG_ERR("CounterStream response decode failed at %u", i);
+            return -1;
+        }
+
+        if (resp.seq != i || resp.value != (int32_t)(i * 10)) {
+            LOG_ERR("CounterStream mismatch at %u: seq=%u value=%d", i, resp.seq, resp.value);
+            return -1;
+        }
+
+        stream_resp_count++;
+    }
+
+    /* Wait for STREAM_END_P2C */
+    rc = k_sem_take(&stream_end_sem, K_SECONDS(10));
+    if (rc != 0) {
+        LOG_ERR("STREAM_END_P2C timeout");
+        return -1;
+    }
+
+    /* Clear stream end callback */
+    ble_central_set_stream_end_cb(NULL);
+
+    LOG_INF("CounterStream: received %u responses", stream_resp_count);
+    if (stream_resp_count != count) {
+        LOG_ERR("CounterStream count mismatch: expected %u, got %u", count, stream_resp_count);
+        return -1;
+    }
+
+    LOG_INF("CounterStream test PASSED");
+    return 0;
+}
+
+static int test_counter_upload(void)
+{
+    LOG_INF("=== CounterUpload Test ===");
+
+    const uint32_t count = 5;
+
+    /* Send N counter_upload requests */
+    for (uint32_t i = 0; i < count; i++) {
+        blerpc_CounterUploadRequest req = blerpc_CounterUploadRequest_init_zero;
+        req.seq = i;
+        req.value = (int32_t)(i * 10);
+
+        static uint8_t req_buf[blerpc_CounterUploadRequest_size];
+        pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
+        if (!pb_encode(&ostream, blerpc_CounterUploadRequest_fields, &req)) {
+            LOG_ERR("CounterUpload request encode failed at %u", i);
+            return -1;
+        }
+
+        static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_upload", 14,
+                                        req_buf, (uint16_t)ostream.bytes_written,
+                                        cmd_buf, sizeof(cmd_buf));
+        if (cmd_len < 0) {
+            LOG_ERR("Command serialize failed at %u", i);
+            return -1;
+        }
+
+        uint8_t tid = next_transaction_id();
+        uint16_t mtu = ble_central_get_mtu();
+        int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
+                                          send_container, NULL);
+        if (rc < 0) {
+            LOG_ERR("Container split/send failed at %u: %d", i, rc);
+            return -1;
+        }
+    }
+
+    /* Send STREAM_END_C2P */
+    int rc = ble_central_send_stream_end_c2p();
+    if (rc < 0) {
+        LOG_ERR("STREAM_END_C2P send failed: %d", rc);
+        return -1;
+    }
+
+    /* Wait for final response */
+    rc = k_sem_take(&response_sem, K_SECONDS(10));
+    if (rc != 0) {
+        LOG_ERR("CounterUpload final response timeout");
+        return -1;
+    }
+
+    if (rpc_error_code != 0) {
+        LOG_ERR("CounterUpload error: 0x%02x", rpc_error_code);
+        return -1;
+    }
+
+    /* Parse response */
+    struct command_packet resp_cmd;
+    if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
+        LOG_ERR("Response command parse failed");
+        return -1;
+    }
+
+    blerpc_CounterUploadResponse resp = blerpc_CounterUploadResponse_init_zero;
+    pb_istream_t istream = pb_istream_from_buffer(resp_cmd.data, resp_cmd.data_len);
+    if (!pb_decode(&istream, blerpc_CounterUploadResponse_fields, &resp)) {
+        LOG_ERR("CounterUpload response decode failed");
+        return -1;
+    }
+
+    LOG_INF("CounterUpload response: received_count=%u", resp.received_count);
+
+    if (resp.received_count != count) {
+        LOG_ERR("CounterUpload count mismatch: expected %u, got %u", count, resp.received_count);
+        return -1;
+    }
+
+    LOG_INF("CounterUpload test PASSED");
+    return 0;
+}
+
 /* ── Main ────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -467,6 +654,18 @@ int main(void)
     k_sleep(K_MSEC(100));
 
     if (test_write_throughput() != 0) {
+        failures++;
+    }
+
+    k_sleep(K_MSEC(100));
+
+    if (test_counter_stream() != 0) {
+        failures++;
+    }
+
+    k_sleep(K_MSEC(100));
+
+    if (test_counter_upload() != 0) {
         failures++;
     }
 

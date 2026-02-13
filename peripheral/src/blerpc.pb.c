@@ -24,4 +24,16 @@ PB_BIND(blerpc_DataWriteRequest, blerpc_DataWriteRequest, AUTO)
 PB_BIND(blerpc_DataWriteResponse, blerpc_DataWriteResponse, AUTO)
 
 
+PB_BIND(blerpc_CounterStreamRequest, blerpc_CounterStreamRequest, AUTO)
+
+
+PB_BIND(blerpc_CounterStreamResponse, blerpc_CounterStreamResponse, AUTO)
+
+
+PB_BIND(blerpc_CounterUploadRequest, blerpc_CounterUploadRequest, AUTO)
+
+
+PB_BIND(blerpc_CounterUploadResponse, blerpc_CounterUploadResponse, AUTO)
+
+
 

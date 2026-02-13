@@ -215,3 +215,43 @@ async def test_multi_container_echo(client):
     message = "B" * 250
     result = await client.echo(message)
     assert result == message
+
+
+@pytest.mark.asyncio
+async def test_counter_stream(client):
+    """P→C stream: receive N counter values."""
+    count = 5
+    results = await client.counter_stream(count)
+    print(f"\nCounterStream: received {len(results)} responses")
+    assert len(results) == count
+    for i, (seq, value) in enumerate(results):
+        assert seq == i, f"seq mismatch at {i}: expected {i}, got {seq}"
+        assert value == i * 10, f"value mismatch at {i}: expected {i * 10}, got {value}"
+
+
+@pytest.mark.asyncio
+async def test_counter_stream_large(client):
+    """P→C stream: receive 20 counter values."""
+    count = 20
+    results = await client.counter_stream(count)
+    assert len(results) == count
+    for i, (seq, value) in enumerate(results):
+        assert seq == i
+        assert value == i * 10
+
+
+@pytest.mark.asyncio
+async def test_counter_upload(client):
+    """C→P stream: upload N counter values."""
+    count = 5
+    received = await client.counter_upload(count)
+    print(f"\nCounterUpload: received_count={received}")
+    assert received == count
+
+
+@pytest.mark.asyncio
+async def test_counter_upload_large(client):
+    """C→P stream: upload 20 counter values."""
+    count = 20
+    received = await client.counter_upload(count)
+    assert received == count

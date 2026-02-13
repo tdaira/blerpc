@@ -36,6 +36,24 @@ typedef struct _blerpc_DataWriteResponse {
     uint32_t length;
 } blerpc_DataWriteResponse;
 
+typedef struct _blerpc_CounterStreamRequest {
+    uint32_t count;
+} blerpc_CounterStreamRequest;
+
+typedef struct _blerpc_CounterStreamResponse {
+    uint32_t seq;
+    int32_t value;
+} blerpc_CounterStreamResponse;
+
+typedef struct _blerpc_CounterUploadRequest {
+    uint32_t seq;
+    int32_t value;
+} blerpc_CounterUploadRequest;
+
+typedef struct _blerpc_CounterUploadResponse {
+    uint32_t received_count;
+} blerpc_CounterUploadResponse;
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,12 +66,20 @@ extern "C" {
 #define blerpc_FlashReadResponse_init_default    {0, {{NULL}, NULL}}
 #define blerpc_DataWriteRequest_init_default     {{{NULL}, NULL}}
 #define blerpc_DataWriteResponse_init_default    {0}
+#define blerpc_CounterStreamRequest_init_default {0}
+#define blerpc_CounterStreamResponse_init_default {0, 0}
+#define blerpc_CounterUploadRequest_init_default {0, 0}
+#define blerpc_CounterUploadResponse_init_default {0}
 #define blerpc_EchoRequest_init_zero             {""}
 #define blerpc_EchoResponse_init_zero            {""}
 #define blerpc_FlashReadRequest_init_zero        {0, 0}
 #define blerpc_FlashReadResponse_init_zero       {0, {{NULL}, NULL}}
 #define blerpc_DataWriteRequest_init_zero        {{{NULL}, NULL}}
 #define blerpc_DataWriteResponse_init_zero       {0}
+#define blerpc_CounterStreamRequest_init_zero    {0}
+#define blerpc_CounterStreamResponse_init_zero   {0, 0}
+#define blerpc_CounterUploadRequest_init_zero    {0, 0}
+#define blerpc_CounterUploadResponse_init_zero   {0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define blerpc_EchoRequest_message_tag           1
@@ -64,6 +90,12 @@ extern "C" {
 #define blerpc_FlashReadResponse_data_tag        2
 #define blerpc_DataWriteRequest_data_tag         1
 #define blerpc_DataWriteResponse_length_tag      1
+#define blerpc_CounterStreamRequest_count_tag    1
+#define blerpc_CounterStreamResponse_seq_tag     1
+#define blerpc_CounterStreamResponse_value_tag   2
+#define blerpc_CounterUploadRequest_seq_tag      1
+#define blerpc_CounterUploadRequest_value_tag    2
+#define blerpc_CounterUploadResponse_received_count_tag 1
 
 /* Struct field encoding specification for nanopb */
 #define blerpc_EchoRequest_FIELDLIST(X, a) \
@@ -98,12 +130,38 @@ X(a, STATIC,   SINGULAR, UINT32,   length,            1)
 #define blerpc_DataWriteResponse_CALLBACK NULL
 #define blerpc_DataWriteResponse_DEFAULT NULL
 
+#define blerpc_CounterStreamRequest_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   count,             1)
+#define blerpc_CounterStreamRequest_CALLBACK NULL
+#define blerpc_CounterStreamRequest_DEFAULT NULL
+
+#define blerpc_CounterStreamResponse_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   seq,               1) \
+X(a, STATIC,   SINGULAR, INT32,    value,             2)
+#define blerpc_CounterStreamResponse_CALLBACK NULL
+#define blerpc_CounterStreamResponse_DEFAULT NULL
+
+#define blerpc_CounterUploadRequest_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   seq,               1) \
+X(a, STATIC,   SINGULAR, INT32,    value,             2)
+#define blerpc_CounterUploadRequest_CALLBACK NULL
+#define blerpc_CounterUploadRequest_DEFAULT NULL
+
+#define blerpc_CounterUploadResponse_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   received_count,    1)
+#define blerpc_CounterUploadResponse_CALLBACK NULL
+#define blerpc_CounterUploadResponse_DEFAULT NULL
+
 extern const pb_msgdesc_t blerpc_EchoRequest_msg;
 extern const pb_msgdesc_t blerpc_EchoResponse_msg;
 extern const pb_msgdesc_t blerpc_FlashReadRequest_msg;
 extern const pb_msgdesc_t blerpc_FlashReadResponse_msg;
 extern const pb_msgdesc_t blerpc_DataWriteRequest_msg;
 extern const pb_msgdesc_t blerpc_DataWriteResponse_msg;
+extern const pb_msgdesc_t blerpc_CounterStreamRequest_msg;
+extern const pb_msgdesc_t blerpc_CounterStreamResponse_msg;
+extern const pb_msgdesc_t blerpc_CounterUploadRequest_msg;
+extern const pb_msgdesc_t blerpc_CounterUploadResponse_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define blerpc_EchoRequest_fields &blerpc_EchoRequest_msg
@@ -112,11 +170,19 @@ extern const pb_msgdesc_t blerpc_DataWriteResponse_msg;
 #define blerpc_FlashReadResponse_fields &blerpc_FlashReadResponse_msg
 #define blerpc_DataWriteRequest_fields &blerpc_DataWriteRequest_msg
 #define blerpc_DataWriteResponse_fields &blerpc_DataWriteResponse_msg
+#define blerpc_CounterStreamRequest_fields &blerpc_CounterStreamRequest_msg
+#define blerpc_CounterStreamResponse_fields &blerpc_CounterStreamResponse_msg
+#define blerpc_CounterUploadRequest_fields &blerpc_CounterUploadRequest_msg
+#define blerpc_CounterUploadResponse_fields &blerpc_CounterUploadResponse_msg
 
 /* Maximum encoded size of messages (where known) */
 /* blerpc_FlashReadResponse_size depends on runtime parameters */
 /* blerpc_DataWriteRequest_size depends on runtime parameters */
 #define BLERPC_BLERPC_PB_H_MAX_SIZE              blerpc_EchoRequest_size
+#define blerpc_CounterStreamRequest_size         6
+#define blerpc_CounterStreamResponse_size        17
+#define blerpc_CounterUploadRequest_size         17
+#define blerpc_CounterUploadResponse_size        6
 #define blerpc_DataWriteResponse_size            6
 #define blerpc_EchoRequest_size                  259
 #define blerpc_EchoResponse_size                 259

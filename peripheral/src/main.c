@@ -3,6 +3,7 @@
 #include <zephyr/logging/log.h>
 
 #include "ble_service.h"
+#include "handlers.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -18,6 +19,7 @@ int main(void)
     LOG_INF("Bluetooth initialized");
 
     ble_service_init();
+    handlers_stream_init();
 
     err = ble_service_start_advertising();
     if (err) {

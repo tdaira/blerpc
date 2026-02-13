@@ -25,8 +25,22 @@ def handle_data_write(req_data):
     return blerpc_pb2.DataWriteResponse().SerializeToString()
 
 
+def handle_counter_stream(req_data):
+    req = blerpc_pb2.CounterStreamRequest()
+    req.ParseFromString(req_data)
+    return blerpc_pb2.CounterStreamResponse().SerializeToString()
+
+
+def handle_counter_upload(req_data):
+    req = blerpc_pb2.CounterUploadRequest()
+    req.ParseFromString(req_data)
+    return blerpc_pb2.CounterUploadResponse().SerializeToString()
+
+
 HANDLERS = {
     "echo": handle_echo,
     "flash_read": handle_flash_read,
     "data_write": handle_data_write,
+    "counter_stream": handle_counter_stream,
+    "counter_upload": handle_counter_upload,
 }

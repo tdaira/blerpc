@@ -39,6 +39,29 @@ uint16_t ble_service_get_mtu(void);
  */
 int ble_service_notify(const uint8_t *data, size_t len);
 
+/**
+ * Send a STREAM_END_P2C control container.
+ * @param transaction_id Transaction ID
+ * @return 0 on success, negative on error
+ */
+int ble_service_send_stream_end_p2c(uint8_t transaction_id);
+
+/**
+ * Callback type for stream end notification (C->P).
+ * Called when STREAM_END_C2P is received from Central.
+ */
+typedef void (*ble_service_stream_end_cb_t)(uint8_t transaction_id);
+
+/**
+ * Register a callback for STREAM_END_C2P reception.
+ */
+void ble_service_set_stream_end_cb(ble_service_stream_end_cb_t cb);
+
+/**
+ * Get the next transaction ID (incrementing counter).
+ */
+uint8_t ble_service_next_transaction_id(void);
+
 #ifdef __cplusplus
 }
 #endif

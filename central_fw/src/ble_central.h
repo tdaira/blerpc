@@ -25,11 +25,27 @@ typedef void (*ble_central_response_cb_t)(const uint8_t *data, size_t len);
 typedef void (*ble_central_error_cb_t)(uint8_t error_code);
 
 /**
+ * Callback for STREAM_END_P2C control container.
+ */
+typedef void (*ble_central_stream_end_cb_t)(void);
+
+/**
  * Initialize the BLE central module.
  * @param resp_cb  Callback invoked when a complete response is assembled
  * @param err_cb   Callback invoked when an ERROR control container is received
  */
 void ble_central_init(ble_central_response_cb_t resp_cb, ble_central_error_cb_t err_cb);
+
+/**
+ * Set callback for STREAM_END_P2C reception.
+ */
+void ble_central_set_stream_end_cb(ble_central_stream_end_cb_t cb);
+
+/**
+ * Send a STREAM_END_C2P control container to peripheral.
+ * @return 0 on success, negative on error
+ */
+int ble_central_send_stream_end_c2p(void);
 
 /**
  * Scan for and connect to a device advertising name "blerpc".

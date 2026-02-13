@@ -25,6 +25,7 @@ static struct container_assembler assembler;
 /* Callbacks */
 static ble_central_response_cb_t response_cb;
 static ble_central_error_cb_t error_cb;
+static ble_central_stream_end_cb_t stream_end_cb;
 
 /* Capabilities */
 static uint16_t max_request_payload_size;
@@ -237,7 +238,11 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
 
     /* Handle control containers before assembler */
     if (hdr.type == CONTAINER_TYPE_CONTROL) {
-        if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES && hdr.payload_len == 4) {
+        if (hdr.control_cmd == CONTROL_CMD_STREAM_END_P2C) {
+            if (stream_end_cb) {
+                stream_end_cb();
+            }
+        } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES && hdr.payload_len == 4) {
             max_request_payload_size = (uint16_t)(hdr.payload[0] | (hdr.payload[1] << 8));
             max_response_payload_size = (uint16_t)(hdr.payload[2] | (hdr.payload[3] << 8));
             k_sem_give(&caps_sem);
@@ -432,4 +437,27 @@ uint16_t ble_central_get_max_request_payload_size(void)
 uint16_t ble_central_get_max_response_payload_size(void)
 {
     return max_response_payload_size;
+}
+
+void ble_central_set_stream_end_cb(ble_central_stream_end_cb_t cb)
+{
+    stream_end_cb = cb;
+}
+
+int ble_central_send_stream_end_c2p(void)
+{
+    uint8_t ctrl_buf[8];
+    struct container_header ctrl = {
+        .transaction_id = 0,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_STREAM_END_C2P,
+        .payload_len = 0,
+    };
+    ctrl.payload = NULL;
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n < 0) {
+        return -EINVAL;
+    }
+    return ble_central_write(ctrl_buf, (size_t)n);
 }

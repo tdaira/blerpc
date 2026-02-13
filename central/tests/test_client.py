@@ -315,3 +315,115 @@ async def test_unknown_error_code_raises_runtime_error():
 
     with pytest.raises(RuntimeError, match="Peripheral error: 0xff"):
         await client.echo("hello")
+
+
+# ── Stream tests ──────────────────────────────────────────────────────────
+
+
+def inject_stream_end_p2c(transport: MockTransport, transaction_id: int):
+    """Enqueue a STREAM_END_P2C control container."""
+    ctrl = Container(
+        transaction_id=transaction_id,
+        sequence_number=0,
+        container_type=ContainerType.CONTROL,
+        control_cmd=ControlCmd.STREAM_END_P2C,
+        payload=b"",
+    )
+    transport._notify_queue.put_nowait(ctrl.serialize())
+
+
+@pytest.mark.asyncio
+async def test_counter_stream():
+    """Test P→C stream: receive N counter responses + STREAM_END_P2C."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    count = 5
+    # Pre-enqueue N responses followed by STREAM_END_P2C
+    for i in range(count):
+        resp = blerpc_pb2.CounterStreamResponse(seq=i, value=i * 10)
+        transport.inject_response(
+            "counter_stream", resp.SerializeToString(), transaction_id=i + 10
+        )
+    inject_stream_end_p2c(transport, transaction_id=100)
+
+    results = await client.counter_stream(count)
+
+    assert len(results) == count
+    for i, (seq, value) in enumerate(results):
+        assert seq == i
+        assert value == i * 10
+
+
+@pytest.mark.asyncio
+async def test_counter_stream_empty():
+    """Test P→C stream with count=0: only STREAM_END_P2C."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    inject_stream_end_p2c(transport, transaction_id=100)
+
+    results = await client.counter_stream(0)
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_counter_upload():
+    """Test C→P stream: send N counter requests, STREAM_END_C2P, receive final response."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    count = 3
+    # Pre-enqueue final response
+    resp = blerpc_pb2.CounterUploadResponse(received_count=count)
+    transport.inject_response(
+        "counter_upload", resp.SerializeToString(), transaction_id=50
+    )
+
+    result = await client.counter_upload(count)
+    assert result == count
+
+    # Verify N requests + STREAM_END_C2P were sent
+    # N messages each produce container(s), plus one STREAM_END_C2P control container
+    written_containers = [Container.deserialize(w) for w in transport._written]
+    stream_ends = [
+        c
+        for c in written_containers
+        if c.container_type == ContainerType.CONTROL
+        and c.control_cmd == ControlCmd.STREAM_END_C2P
+    ]
+    assert len(stream_ends) == 1
+
+    # All non-control containers should be FIRST containers (requests are small)
+    data_containers = [
+        c for c in written_containers if c.container_type != ContainerType.CONTROL
+    ]
+    assert len(data_containers) == count
+
+
+@pytest.mark.asyncio
+async def test_stream_receive_error_during_stream():
+    """ERROR control during P→C stream raises."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    # Enqueue one response, then an error
+    resp = blerpc_pb2.CounterStreamResponse(seq=0, value=0)
+    transport.inject_response(
+        "counter_stream", resp.SerializeToString(), transaction_id=10
+    )
+    err_container = Container(
+        transaction_id=0,
+        sequence_number=0,
+        container_type=ContainerType.CONTROL,
+        control_cmd=ControlCmd.ERROR,
+        payload=bytes([BLERPC_ERROR_RESPONSE_TOO_LARGE]),
+    )
+    transport._notify_queue.put_nowait(err_container.serialize())
+
+    with pytest.raises(ResponseTooLargeError):
+        async for _ in client.stream_receive(
+            "counter_stream",
+            blerpc_pb2.CounterStreamRequest(count=5).SerializeToString(),
+        ):
+            pass

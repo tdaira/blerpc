@@ -16,6 +16,8 @@ static struct bt_uuid_128 blerpc_char_uuid = BT_UUID_INIT_128(BLERPC_CHAR_UUID);
 
 static struct bt_conn *current_conn;
 static struct container_assembler assembler;
+static ble_service_stream_end_cb_t stream_end_cb;
+static uint8_t transaction_counter;
 
 /* Work queue for async response processing */
 static struct k_work_q blerpc_work_q;
@@ -159,7 +161,12 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
 
     /* Pass 1: Calculate protobuf encoded size (sizing stream, no I/O) */
     pb_ostream_t sizing = PB_OSTREAM_SIZING;
-    if (handler(cmd.data, cmd.data_len, &sizing) != 0) {
+    int handler_rc = handler(cmd.data, cmd.data_len, &sizing);
+    if (handler_rc == -2) {
+        /* Handler manages its own response (e.g. stream handlers) */
+        return;
+    }
+    if (handler_rc != 0) {
         LOG_ERR("Handler sizing pass failed");
         return;
     }
@@ -274,6 +281,10 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
             if (n > 0) {
                 ble_service_notify(ctrl_buf, (size_t)n);
+            }
+        } else if (hdr.control_cmd == CONTROL_CMD_STREAM_END_C2P) {
+            if (stream_end_cb) {
+                stream_end_cb(hdr.transaction_id);
             }
         } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES) {
             uint8_t ctrl_buf[8];
@@ -398,4 +409,32 @@ void ble_service_init(void)
                        K_PRIO_COOP(7), NULL);
     k_work_init(&req_work.work, request_work_handler);
     container_assembler_init(&assembler);
+}
+
+int ble_service_send_stream_end_p2c(uint8_t transaction_id)
+{
+    uint8_t ctrl_buf[8];
+    struct container_header ctrl = {
+        .transaction_id = transaction_id,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_STREAM_END_P2C,
+        .payload_len = 0,
+    };
+    ctrl.payload = NULL;
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n < 0) {
+        return -1;
+    }
+    return send_with_retry(ctrl_buf, (size_t)n);
+}
+
+void ble_service_set_stream_end_cb(ble_service_stream_end_cb_t cb)
+{
+    stream_end_cb = cb;
+}
+
+uint8_t ble_service_next_transaction_id(void)
+{
+    return transaction_counter++;
 }

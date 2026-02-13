@@ -30,6 +30,12 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len,
 int handle_data_write(const uint8_t *req_data, size_t req_len,
                           pb_ostream_t *ostream);
 
+int handle_counter_stream(const uint8_t *req_data, size_t req_len,
+                              pb_ostream_t *ostream);
+
+int handle_counter_upload(const uint8_t *req_data, size_t req_len,
+                              pb_ostream_t *ostream);
+
 #ifdef __cplusplus
 }
 #endif

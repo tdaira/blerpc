@@ -14,6 +14,8 @@ from blerpc_protocol.container import (
     ContainerType,
     ControlCmd,
     make_capabilities_request,
+    make_stream_end_c2p,
+    make_stream_end_p2c,
     make_timeout_request,
 )
 
@@ -171,6 +173,146 @@ class BlerpcClient(GeneratedClientMixin):
             )
 
         return resp.data
+
+    async def stream_receive(self, cmd_name: str, request_data: bytes):
+        """P->C stream: send request, yield response data until STREAM_END_P2C.
+
+        Each yielded bytes object is the protobuf-encoded data portion
+        of a single CommandPacket response.
+        """
+        # Send initial request (same as _call send path)
+        cmd = CommandPacket(
+            cmd_type=CommandType.REQUEST,
+            cmd_name=cmd_name,
+            data=request_data,
+        )
+        payload = cmd.serialize()
+
+        if (
+            self._max_request_payload_size is not None
+            and len(payload) > self._max_request_payload_size
+        ):
+            raise PayloadTooLargeError(len(payload), self._max_request_payload_size)
+
+        containers = self._splitter.split(payload)
+        for c in containers:
+            await self._transport.write(c.serialize())
+
+        # Receive stream responses until STREAM_END_P2C
+        self._assembler.reset()
+        while True:
+            notify_data = await self._transport.read_notify(timeout=self._timeout_s)
+            container = Container.deserialize(notify_data)
+
+            if container.container_type == ContainerType.CONTROL:
+                if container.control_cmd == ControlCmd.STREAM_END_P2C:
+                    break
+                if (
+                    container.control_cmd == ControlCmd.ERROR
+                    and len(container.payload) >= 1
+                ):
+                    error_code = container.payload[0]
+                    if error_code == BLERPC_ERROR_RESPONSE_TOO_LARGE:
+                        raise ResponseTooLargeError(
+                            "Response exceeds peripheral's max_response_payload_size"
+                        )
+                    raise RuntimeError(f"Peripheral error: 0x{error_code:02x}")
+                continue
+
+            result = self._assembler.feed(container)
+            if result is not None:
+                resp = CommandPacket.deserialize(result)
+                if resp.cmd_type != CommandType.RESPONSE:
+                    raise RuntimeError(
+                        f"Expected response, got type={resp.cmd_type}"
+                    )
+                yield resp.data
+
+    async def stream_send(
+        self,
+        cmd_name: str,
+        messages: list[bytes],
+        final_cmd_name: str,
+    ) -> bytes:
+        """C->P stream: send multiple requests, then STREAM_END_C2P, return final response data.
+
+        Each item in messages is protobuf-encoded request data.
+        After sending all messages + STREAM_END_C2P, waits for a final response
+        with cmd_name=final_cmd_name and returns its data.
+        """
+        # Send each message as an independent request
+        for msg_data in messages:
+            cmd = CommandPacket(
+                cmd_type=CommandType.REQUEST,
+                cmd_name=cmd_name,
+                data=msg_data,
+            )
+            payload = cmd.serialize()
+            containers = self._splitter.split(payload)
+            for c in containers:
+                await self._transport.write(c.serialize())
+
+        # Send STREAM_END_C2P
+        tid = self._splitter.next_transaction_id()
+        stream_end = make_stream_end_c2p(transaction_id=tid)
+        await self._transport.write(stream_end.serialize())
+
+        # Wait for final response
+        self._assembler.reset()
+        while True:
+            notify_data = await self._transport.read_notify(timeout=self._timeout_s)
+            container = Container.deserialize(notify_data)
+
+            if container.container_type == ContainerType.CONTROL:
+                if (
+                    container.control_cmd == ControlCmd.ERROR
+                    and len(container.payload) >= 1
+                ):
+                    error_code = container.payload[0]
+                    if error_code == BLERPC_ERROR_RESPONSE_TOO_LARGE:
+                        raise ResponseTooLargeError(
+                            "Response exceeds peripheral's max_response_payload_size"
+                        )
+                    raise RuntimeError(f"Peripheral error: 0x{error_code:02x}")
+                continue
+
+            result = self._assembler.feed(container)
+            if result is not None:
+                break
+
+        resp = CommandPacket.deserialize(result)
+        if resp.cmd_type != CommandType.RESPONSE:
+            raise RuntimeError(f"Expected response, got type={resp.cmd_type}")
+        if resp.cmd_name != final_cmd_name:
+            raise RuntimeError(
+                f"Command name mismatch: expected '{final_cmd_name}', got '{resp.cmd_name}'"
+            )
+        return resp.data
+
+    async def counter_stream(self, count: int) -> list:
+        """P->C stream: request count counter values, return list of (seq, value) tuples."""
+        req = blerpc_pb2.CounterStreamRequest(count=count)
+        results = []
+        async for data in self.stream_receive(
+            "counter_stream", req.SerializeToString()
+        ):
+            resp = blerpc_pb2.CounterStreamResponse()
+            resp.ParseFromString(data)
+            results.append((resp.seq, resp.value))
+        return results
+
+    async def counter_upload(self, count: int) -> int:
+        """C->P stream: upload count counter values, return received_count."""
+        messages = []
+        for i in range(count):
+            req = blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10)
+            messages.append(req.SerializeToString())
+        resp_data = await self.stream_send(
+            "counter_upload", messages, "counter_upload"
+        )
+        resp = blerpc_pb2.CounterUploadResponse()
+        resp.ParseFromString(resp_data)
+        return resp.received_count
 
     async def echo(self, message: str) -> str:
         """Call the echo command."""

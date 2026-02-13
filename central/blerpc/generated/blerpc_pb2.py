@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x62lerpc.proto\x12\x06\x62lerpc\"\x1e\n\x0b\x45\x63hoRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1f\n\x0c\x45\x63hoResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"3\n\x10\x46lashReadRequest\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\r\x12\x0e\n\x06length\x18\x02 \x01(\r\"2\n\x11\x46lashReadResponse\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\r\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\" \n\x10\x44\x61taWriteRequest\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\"#\n\x11\x44\x61taWriteResponse\x12\x0e\n\x06length\x18\x01 \x01(\rb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x62lerpc.proto\x12\x06\x62lerpc\"\x1e\n\x0b\x45\x63hoRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1f\n\x0c\x45\x63hoResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"3\n\x10\x46lashReadRequest\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\r\x12\x0e\n\x06length\x18\x02 \x01(\r\"2\n\x11\x46lashReadResponse\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\r\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\" \n\x10\x44\x61taWriteRequest\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\"#\n\x11\x44\x61taWriteResponse\x12\x0e\n\x06length\x18\x01 \x01(\r\"%\n\x14\x43ounterStreamRequest\x12\r\n\x05\x63ount\x18\x01 \x01(\r\"3\n\x15\x43ounterStreamResponse\x12\x0b\n\x03seq\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\x05\"2\n\x14\x43ounterUploadRequest\x12\x0b\n\x03seq\x18\x01 \x01(\r\x12\r\n\x05value\x18\x02 \x01(\x05\"/\n\x15\x43ounterUploadResponse\x12\x16\n\x0ereceived_count\x18\x01 \x01(\rb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -43,4 +43,12 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_DATAWRITEREQUEST']._serialized_end=226
   _globals['_DATAWRITERESPONSE']._serialized_start=228
   _globals['_DATAWRITERESPONSE']._serialized_end=263
+  _globals['_COUNTERSTREAMREQUEST']._serialized_start=265
+  _globals['_COUNTERSTREAMREQUEST']._serialized_end=302
+  _globals['_COUNTERSTREAMRESPONSE']._serialized_start=304
+  _globals['_COUNTERSTREAMRESPONSE']._serialized_end=355
+  _globals['_COUNTERUPLOADREQUEST']._serialized_start=357
+  _globals['_COUNTERUPLOADREQUEST']._serialized_end=407
+  _globals['_COUNTERUPLOADRESPONSE']._serialized_start=409
+  _globals['_COUNTERUPLOADRESPONSE']._serialized_end=456
 # @@protoc_insertion_point(module_scope)

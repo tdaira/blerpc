@@ -61,10 +61,38 @@ int handle_data_write(const uint8_t *req_data, size_t req_len,
     return 0;
 }
 
+__attribute__((weak))
+int handle_counter_stream(const uint8_t *req_data, size_t req_len,
+                              pb_ostream_t *ostream)
+{
+    blerpc_CounterStreamRequest req = blerpc_CounterStreamRequest_init_zero;
+    pb_istream_t stream = pb_istream_from_buffer(req_data, req_len);
+    if (!pb_decode(&stream, blerpc_CounterStreamRequest_fields, &req)) return -1;
+
+    blerpc_CounterStreamResponse resp = blerpc_CounterStreamResponse_init_zero;
+    if (!pb_encode(ostream, blerpc_CounterStreamResponse_fields, &resp)) return -1;
+    return 0;
+}
+
+__attribute__((weak))
+int handle_counter_upload(const uint8_t *req_data, size_t req_len,
+                              pb_ostream_t *ostream)
+{
+    blerpc_CounterUploadRequest req = blerpc_CounterUploadRequest_init_zero;
+    pb_istream_t stream = pb_istream_from_buffer(req_data, req_len);
+    if (!pb_decode(&stream, blerpc_CounterUploadRequest_fields, &req)) return -1;
+
+    blerpc_CounterUploadResponse resp = blerpc_CounterUploadResponse_init_zero;
+    if (!pb_encode(ostream, blerpc_CounterUploadResponse_fields, &resp)) return -1;
+    return 0;
+}
+
 static const struct handler_entry handler_table[] = {
     {"echo", 4, handle_echo},
     {"flash_read", 10, handle_flash_read},
     {"data_write", 10, handle_data_write},
+    {"counter_stream", 14, handle_counter_stream},
+    {"counter_upload", 14, handle_counter_upload},
 };
 
 command_handler_fn handlers_lookup(const char *name, uint8_t name_len)
