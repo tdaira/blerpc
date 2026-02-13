@@ -14,6 +14,7 @@ import time
 
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
+    BLERPC_ERROR_RESPONSE_TOO_LARGE,
     Container,
     ContainerAssembler,
     ContainerSplitter,
@@ -39,6 +40,7 @@ SERVICE_UUID = "12340001-0000-1000-8000-00805f9b34fb"
 CHAR_UUID = "12340002-0000-1000-8000-00805f9b34fb"
 TIMEOUT_MS = 100
 MTU = 247
+MAX_RESPONSE_PAYLOAD_SIZE = 65535
 
 
 HANDLERS = dict(_GENERATED_HANDLERS)
@@ -127,13 +129,16 @@ class BlerpcPeripheral:
                 )
                 self._send_container_sync(resp)
             elif container.control_cmd == ControlCmd.CAPABILITIES:
-                logger.info("Capabilities request, max_req=65535 max_resp=65535")
+                logger.info(
+                    "Capabilities request, max_req=65535 max_resp=%d",
+                    MAX_RESPONSE_PAYLOAD_SIZE,
+                )
                 resp = Container(
                     transaction_id=container.transaction_id,
                     sequence_number=0,
                     container_type=ContainerType.CONTROL,
                     control_cmd=ControlCmd.CAPABILITIES,
-                    payload=struct.pack("<HH", 65535, 65535),
+                    payload=struct.pack("<HH", 65535, MAX_RESPONSE_PAYLOAD_SIZE),
                 )
                 self._send_container_sync(resp)
             return
@@ -174,6 +179,22 @@ class BlerpcPeripheral:
             data=resp_data,
         )
         resp_payload = resp_cmd.serialize()
+
+        if len(resp_payload) > MAX_RESPONSE_PAYLOAD_SIZE:
+            err = Container(
+                transaction_id=transaction_id,
+                sequence_number=0,
+                container_type=ContainerType.CONTROL,
+                control_cmd=ControlCmd.ERROR,
+                payload=bytes([BLERPC_ERROR_RESPONSE_TOO_LARGE]),
+            )
+            self._send_container_sync(err)
+            logger.warning(
+                "Response too large: %d > %d",
+                len(resp_payload),
+                MAX_RESPONSE_PAYLOAD_SIZE,
+            )
+            return
 
         containers = self.splitter.split(resp_payload, transaction_id=transaction_id)
         logger.info(

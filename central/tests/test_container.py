@@ -5,6 +5,7 @@ import struct
 import pytest
 from blerpc_protocol.container import (
     ATT_OVERHEAD,
+    BLERPC_ERROR_RESPONSE_TOO_LARGE,
     FIRST_HEADER_SIZE,
     SUBSEQUENT_HEADER_SIZE,
     Container,
@@ -14,6 +15,7 @@ from blerpc_protocol.container import (
     ControlCmd,
     make_capabilities_request,
     make_capabilities_response,
+    make_error_response,
     make_stream_end_c2p,
     make_stream_end_p2c,
     make_timeout_request,
@@ -380,3 +382,17 @@ class TestControlContainers:
         assert c.control_cmd == ControlCmd.CAPABILITIES
         assert len(c.payload) == 4
         assert struct.unpack("<HH", c.payload) == (256, 65535)
+
+    def test_error_response(self):
+        c = make_error_response(
+            transaction_id=10, error_code=BLERPC_ERROR_RESPONSE_TOO_LARGE
+        )
+        assert c.container_type == ContainerType.CONTROL
+        assert c.control_cmd == ControlCmd.ERROR
+        assert c.payload == bytes([0x01])
+
+        data = c.serialize()
+        c2 = Container.deserialize(data)
+        assert c2.container_type == ContainerType.CONTROL
+        assert c2.control_cmd == ControlCmd.ERROR
+        assert c2.payload == bytes([BLERPC_ERROR_RESPONSE_TOO_LARGE])

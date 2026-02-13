@@ -8,7 +8,7 @@ import time
 
 import pytest
 import pytest_asyncio
-from blerpc.client import BlerpcClient, PayloadTooLargeError
+from blerpc.client import BlerpcClient, PayloadTooLargeError, ResponseTooLargeError
 
 # Skip all tests if no BLE hardware is available
 pytestmark = pytest.mark.skipif(
@@ -178,6 +178,35 @@ async def test_data_write_throughput(client):
         f"\nWrite throughput: {num_writes}x {write_size}B = {total_bytes}B "
         f"in {elapsed:.3f}s = {throughput:.0f} bytes/s ({per_call * 1000:.1f}ms/call)"
     )
+
+
+@pytest.mark.asyncio
+async def test_response_too_large(client):
+    """flash_read(0, 128) should trigger ResponseTooLargeError when MAX_RESPONSE_PAYLOAD_SIZE=100."""
+    if client.max_response_payload_size is None:
+        pytest.skip("Peripheral did not report capabilities")
+    if client.max_response_payload_size > 100:
+        pytest.skip(
+            f"Peripheral max_response={client.max_response_payload_size}, "
+            "need <=100 for this test"
+        )
+    print(f"\nmax_response_payload_size={client.max_response_payload_size}")
+    with pytest.raises(ResponseTooLargeError):
+        await client.flash_read(0, 128)
+
+
+@pytest.mark.asyncio
+async def test_echo_within_limit_with_small_max(client):
+    """Short echo should succeed even when MAX_RESPONSE_PAYLOAD_SIZE=100."""
+    if client.max_response_payload_size is None:
+        pytest.skip("Peripheral did not report capabilities")
+    if client.max_response_payload_size > 100:
+        pytest.skip(
+            f"Peripheral max_response={client.max_response_payload_size}, "
+            "need <=100 for this test"
+        )
+    result = await client.echo("hello")
+    assert result == "hello"
 
 
 @pytest.mark.asyncio

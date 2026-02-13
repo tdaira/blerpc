@@ -7,10 +7,11 @@ without requiring BLE hardware.
 import asyncio
 
 import pytest
-from blerpc.client import BlerpcClient, PayloadTooLargeError
+from blerpc.client import BlerpcClient, PayloadTooLargeError, ResponseTooLargeError
 from blerpc.generated import blerpc_pb2
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
+    BLERPC_ERROR_RESPONSE_TOO_LARGE,
     Container,
     ContainerSplitter,
     ContainerType,
@@ -272,3 +273,45 @@ async def test_no_max_payload_allows_large():
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
     result = await client.echo(msg)
     assert result == msg
+
+
+# ── Response too large error tests ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_response_too_large_error():
+    """ERROR control container with RESPONSE_TOO_LARGE raises ResponseTooLargeError."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    # Enqueue an ERROR control container
+    err_container = Container(
+        transaction_id=0,
+        sequence_number=0,
+        container_type=ContainerType.CONTROL,
+        control_cmd=ControlCmd.ERROR,
+        payload=bytes([BLERPC_ERROR_RESPONSE_TOO_LARGE]),
+    )
+    transport._notify_queue.put_nowait(err_container.serialize())
+
+    with pytest.raises(ResponseTooLargeError):
+        await client.echo("hello")
+
+
+@pytest.mark.asyncio
+async def test_unknown_error_code_raises_runtime_error():
+    """ERROR control container with unknown code raises RuntimeError."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    err_container = Container(
+        transaction_id=0,
+        sequence_number=0,
+        container_type=ContainerType.CONTROL,
+        control_cmd=ControlCmd.ERROR,
+        payload=bytes([0xFF]),
+    )
+    transport._notify_queue.put_nowait(err_container.serialize())
+
+    with pytest.raises(RuntimeError, match="Peripheral error: 0xff"):
+        await client.echo("hello")

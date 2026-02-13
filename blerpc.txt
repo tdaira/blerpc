@@ -44,6 +44,7 @@ BLEの通信をProtocol Buffersを用いて実現する。
   - `0x2`: ストリーム終了（Central → Peripheral）
   - `0x3`: ストリーム終了（Peripheral → Central）
   - `0x4`: ケイパビリティ共有
+  - `0x5`: エラー通知
 - **reserved**: 予約領域（0埋め）
 - **total_length**: コンテナを全て結合したときのpayloadの合計長。type=0b00（先頭）の場合のみ付与し、type=0b01（後続）およびtype=0b11（制御）の場合は省略する。単位はByte
 - **payload_len**: payloadの長さ。単位はByte
@@ -91,6 +92,17 @@ Peripheral側のバッファ制限をCentralに共有する。CentralがPeripher
 
 - max_request_payload_size: Peripheralが受信可能なリクエストペイロードの最大サイズ（単位: Byte、リトルエンディアン）。アセンブラバッファサイズに相当
 - max_response_payload_size: Peripheralが送信可能なレスポンスペイロードの最大サイズ（単位: Byte、リトルエンディアン）
+
+#### エラー通知 (control_cmd=0x5)
+
+Peripheral側でレスポンスのサイズが上限を超えた場合等に、CentralにエラーをPeripheralから通知する。
+
+**エラー通知（Peripheral → Central）:**
+
+| transaction_id (8) | sequence_number (8) | type=0b11 (2) | control_cmd=0x5 (4) | reserved (2) | payload_len=0x01 (8) | error_code (8) |
+
+- error_code: エラーコード
+  - `0x01`: レスポンスペイロード超過（RESPONSE_TOO_LARGE）— レスポンスがmax_response_payload_sizeを超える場合
 
 ## コマンドエンコード/デコードレイヤー
 

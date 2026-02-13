@@ -20,10 +20,16 @@ extern "C" {
 typedef void (*ble_central_response_cb_t)(const uint8_t *data, size_t len);
 
 /**
- * Initialize the BLE central module.
- * @param cb  Callback invoked when a complete response is assembled
+ * Callback for received error control containers.
  */
-void ble_central_init(ble_central_response_cb_t cb);
+typedef void (*ble_central_error_cb_t)(uint8_t error_code);
+
+/**
+ * Initialize the BLE central module.
+ * @param resp_cb  Callback invoked when a complete response is assembled
+ * @param err_cb   Callback invoked when an ERROR control container is received
+ */
+void ble_central_init(ble_central_response_cb_t resp_cb, ble_central_error_cb_t err_cb);
 
 /**
  * Scan for and connect to a device advertising name "blerpc".

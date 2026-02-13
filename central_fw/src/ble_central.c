@@ -22,8 +22,9 @@ static struct bt_gatt_subscribe_params subscribe_params;
 /* Container assembler for incoming notifications */
 static struct container_assembler assembler;
 
-/* Response callback */
+/* Callbacks */
 static ble_central_response_cb_t response_cb;
+static ble_central_error_cb_t error_cb;
 
 /* Capabilities */
 static uint16_t max_request_payload_size;
@@ -240,6 +241,10 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
             max_request_payload_size = (uint16_t)(hdr.payload[0] | (hdr.payload[1] << 8));
             max_response_payload_size = (uint16_t)(hdr.payload[2] | (hdr.payload[3] << 8));
             k_sem_give(&caps_sem);
+        } else if (hdr.control_cmd == CONTROL_CMD_ERROR && hdr.payload_len >= 1) {
+            if (error_cb) {
+                error_cb(hdr.payload[0]);
+            }
         }
         return BT_GATT_ITER_CONTINUE;
     }
@@ -308,9 +313,10 @@ static void mtu_exchange_cb(struct bt_conn *conn, uint8_t err,
 
 /* ── Public API ──────────────────────────────────────────────────────── */
 
-void ble_central_init(ble_central_response_cb_t cb)
+void ble_central_init(ble_central_response_cb_t resp_cb, ble_central_error_cb_t err_cb)
 {
-    response_cb = cb;
+    response_cb = resp_cb;
+    error_cb = err_cb;
     container_assembler_init(&assembler);
 }
 

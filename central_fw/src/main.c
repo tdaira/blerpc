@@ -18,6 +18,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 /* Response buffer and synchronization */
 static uint8_t response_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 static size_t response_len;
+static int rpc_error_code;
 static K_SEM_DEFINE(response_sem, 0, 1);
 
 static uint8_t transaction_counter;
@@ -36,6 +37,15 @@ static void on_response(const uint8_t *data, size_t len)
     }
     memcpy(response_buf, data, len);
     response_len = len;
+    rpc_error_code = 0;
+    k_sem_give(&response_sem);
+}
+
+/* Callback from ble_central when an ERROR control container is received */
+static void on_error(uint8_t error_code)
+{
+    LOG_ERR("Peripheral error: 0x%02x", error_code);
+    rpc_error_code = error_code;
     k_sem_give(&response_sem);
 }
 
@@ -64,6 +74,12 @@ static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_l
         return -1;
     }
 
+    uint16_t max_req = ble_central_get_max_request_payload_size();
+    if (max_req > 0 && (size_t)cmd_len > max_req) {
+        LOG_ERR("Request too large: %d > %u", cmd_len, max_req);
+        return -1;
+    }
+
     uint8_t tid = next_transaction_id();
     uint16_t mtu = ble_central_get_mtu();
 
@@ -77,6 +93,11 @@ static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_l
     rc = k_sem_take(&response_sem, K_SECONDS(10));
     if (rc != 0) {
         LOG_ERR("Response timeout");
+        return -1;
+    }
+
+    if (rpc_error_code != 0) {
+        LOG_ERR("RPC error from peripheral: 0x%02x", rpc_error_code);
         return -1;
     }
 
@@ -395,7 +416,7 @@ int main(void)
     }
     LOG_INF("Bluetooth initialized");
 
-    ble_central_init(on_response);
+    ble_central_init(on_response, on_error);
 
     err = ble_central_connect();
     if (err) {

@@ -169,6 +169,28 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
     size_t cmd_hdr_size = 2 + cmd.cmd_name_len + 2;
     size_t total_length = cmd_hdr_size + pb_size;
 
+    /* Check response size against max */
+    if (CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE < 65535 &&
+        total_length > CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE) {
+        uint8_t ctrl_buf[8];
+        struct container_header ctrl = {
+            .transaction_id = transaction_id,
+            .sequence_number = 0,
+            .type = CONTAINER_TYPE_CONTROL,
+            .control_cmd = CONTROL_CMD_ERROR,
+            .payload_len = 1,
+        };
+        uint8_t err_payload[1] = { BLERPC_ERROR_RESPONSE_TOO_LARGE };
+        ctrl.payload = err_payload;
+        int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+        if (n > 0) {
+            send_with_retry(ctrl_buf, (size_t)n);
+        }
+        LOG_WRN("Response too large: %zu > %u", total_length,
+                CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE);
+        return;
+    }
+
     /* Build command header */
     uint8_t cmd_hdr[20];
     cmd_hdr[0] = (COMMAND_TYPE_RESPONSE & 0x01) << 7;

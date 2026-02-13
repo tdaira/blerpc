@@ -7,6 +7,7 @@ import logging
 
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
+    BLERPC_ERROR_RESPONSE_TOO_LARGE,
     Container,
     ContainerAssembler,
     ContainerSplitter,
@@ -32,6 +33,10 @@ class PayloadTooLargeError(Exception):
         super().__init__(
             f"Request payload ({actual} bytes) exceeds peripheral limit ({limit} bytes)"
         )
+
+
+class ResponseTooLargeError(Exception):
+    """Raised when the peripheral reports that the response exceeds its max_response_payload_size."""
 
 
 class BlerpcClient(GeneratedClientMixin):
@@ -140,7 +145,17 @@ class BlerpcClient(GeneratedClientMixin):
             container = Container.deserialize(notify_data)
 
             if container.container_type == ContainerType.CONTROL:
-                continue  # Skip control containers
+                if (
+                    container.control_cmd == ControlCmd.ERROR
+                    and len(container.payload) >= 1
+                ):
+                    error_code = container.payload[0]
+                    if error_code == BLERPC_ERROR_RESPONSE_TOO_LARGE:
+                        raise ResponseTooLargeError(
+                            "Response exceeds peripheral's max_response_payload_size"
+                        )
+                    raise RuntimeError(f"Peripheral error: 0x{error_code:02x}")
+                continue  # Skip other control containers
 
             result = self._assembler.feed(container)
             if result is not None:
