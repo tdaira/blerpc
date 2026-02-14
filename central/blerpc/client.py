@@ -20,7 +20,7 @@ from blerpc_protocol.container import (
 
 from .generated import blerpc_pb2
 from .generated.generated_client import GeneratedClientMixin
-from .transport import BleTransport
+from .transport import SERVICE_UUID, BleTransport, ScannedDevice
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,17 @@ class BlerpcClient(GeneratedClientMixin):
     def max_response_payload_size(self) -> int | None:
         return self._max_response_payload_size
 
-    async def connect(self, device_name: str = "blerpc", timeout: float = 10.0):
-        """Connect to the blerpc peripheral."""
-        await self._transport.connect(device_name=device_name, timeout=timeout)
+    async def scan(
+        self,
+        timeout: float = 5.0,
+        service_uuid: str | None = SERVICE_UUID,
+    ) -> list[ScannedDevice]:
+        """Scan for BLE devices."""
+        return await self._transport.scan(timeout=timeout, service_uuid=service_uuid)
+
+    async def connect(self, device: ScannedDevice):
+        """Connect to a previously scanned device."""
+        await self._transport.connect(device)
         self._splitter = ContainerSplitter(mtu=self._transport.mtu)
 
         # Optionally request timeout from peripheral

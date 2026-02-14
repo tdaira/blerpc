@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
+import com.blerpc.android.ble.ScannedDevice
+import com.blerpc.android.client.BlerpcClient
 import com.blerpc.android.test.TestRunner
 import com.blerpc.android.ui.LogScreen
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +43,8 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 val logs by testRunner.logs.collectAsState()
                 var isRunning by remember { mutableStateOf(false) }
+                var isScanning by remember { mutableStateOf(false) }
+                var scannedDevices by remember { mutableStateOf<List<ScannedDevice>>(emptyList()) }
 
                 // Auto-run tests if requested via intent
                 LaunchedEffect(autoRunPending) {
@@ -61,11 +65,39 @@ class MainActivity : ComponentActivity() {
                 LogScreen(
                     logs = logs,
                     isRunning = isRunning,
+                    isScanning = isScanning,
+                    scannedDevices = scannedDevices,
+                    onScan = {
+                        isScanning = true
+                        scannedDevices = emptyList()
+                        scope.launch {
+                            try {
+                                val client = BlerpcClient(applicationContext)
+                                scannedDevices = client.scan()
+                            } catch (_: Exception) {
+                                // Scan failed
+                            } finally {
+                                isScanning = false
+                            }
+                        }
+                    },
                     onRunTests = {
                         isRunning = true
+                        scannedDevices = emptyList()
                         scope.launch {
                             try {
                                 testRunner.runAll()
+                            } finally {
+                                isRunning = false
+                            }
+                        }
+                    },
+                    onSelectDevice = { device ->
+                        isRunning = true
+                        scannedDevices = emptyList()
+                        scope.launch {
+                            try {
+                                testRunner.runAll(device = device)
                             } finally {
                                 isRunning = false
                             }

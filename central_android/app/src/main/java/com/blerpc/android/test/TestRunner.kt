@@ -2,6 +2,7 @@ package com.blerpc.android.test
 
 import android.content.Context
 import android.util.Log
+import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.android.client.BlerpcClient
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.delay
@@ -22,7 +23,7 @@ class TestRunner(private val context: Context) {
         _logs.value = _logs.value + msg
     }
 
-    suspend fun runAll(iterations: Int = 1) {
+    suspend fun runAll(iterations: Int = 1, device: ScannedDevice? = null) {
         if (running) return
         running = true
         _logs.value = emptyList()
@@ -31,8 +32,21 @@ class TestRunner(private val context: Context) {
 
         val client = BlerpcClient(context)
         try {
-            log("Connecting to blerpc peripheral...")
-            client.connect()
+            val target: ScannedDevice
+            if (device != null) {
+                target = device
+            } else {
+                log("Scanning for blerpc peripherals...")
+                val devices = client.scan()
+                if (devices.isEmpty()) {
+                    log("[ERROR] No blerpc devices found")
+                    running = false
+                    return
+                }
+                target = devices.first()
+            }
+            log("Connecting to ${target.name ?: target.address}...")
+            client.connect(target)
             log("Connected. MTU=${client.mtu}")
 
             for (iter in 1..iterations) {

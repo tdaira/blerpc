@@ -374,7 +374,9 @@ static const struct bt_data ad[] = {
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA(BT_DATA_NAME_COMPLETE, "blerpc", sizeof("blerpc") - 1),
+    BT_DATA(BT_DATA_NAME_COMPLETE,
+            CONFIG_BLERPC_DEVICE_NAME,
+            sizeof(CONFIG_BLERPC_DEVICE_NAME) - 1),
 };
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)

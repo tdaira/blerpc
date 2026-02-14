@@ -1,7 +1,7 @@
 import CoreBluetooth
 import Foundation
 
-private let serviceUUID = CBUUID(string: "12340001-0000-1000-8000-00805f9b34fb")
+let serviceUUID = CBUUID(string: "12340001-0000-1000-8000-00805f9b34fb")
 private let charUUID = CBUUID(string: "12340002-0000-1000-8000-00805f9b34fb")
 
 enum BleTransportError: Error {
@@ -13,6 +13,17 @@ enum BleTransportError: Error {
     case writeFailed
     case readTimeout
     case bluetoothNotAvailable
+}
+
+struct ScannedDevice: Identifiable {
+    let id: UUID
+    let name: String?
+    let rssi: Int
+    let manufacturerData: Data?
+    let serviceData: [CBUUID: Data]
+    let serviceUUIDs: [CBUUID]
+    let isConnectable: Bool
+    let peripheral: CBPeripheral
 }
 
 final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -30,39 +41,57 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     private var connectContinuation: CheckedContinuation<Void, any Error>?
     private var stateContinuation: CheckedContinuation<Void, any Error>?
 
+    // Scan accumulation
+    private var scanResults: [UUID: ScannedDevice] = [:]
+    private var scanAccumulating = false
+
     override init() {
         super.init()
     }
 
-    func connect(deviceName: String = "blerpc", timeout: TimeInterval = 10) async throws {
+    private func ensureCentralManager() async throws -> CBCentralManager {
+        if let cm = centralManager {
+            if cm.state == .poweredOn { return cm }
+            // Wait for powered-on state
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+                self.stateContinuation = cont
+            }
+            return cm
+        }
         let cm = CBCentralManager(delegate: self, queue: nil)
         self.centralManager = cm
-
-        // Wait for powered-on state
         if cm.state != .poweredOn {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
                 self.stateContinuation = cont
             }
         }
+        return cm
+    }
 
-        // Scan for peripheral
-        let foundPeripheral: CBPeripheral = try await withThrowingTaskGroup(of: CBPeripheral.self) { group in
-            group.addTask { @Sendable in
-                try await withCheckedThrowingContinuation { cont in
-                    self.scanContinuation = cont
-                    cm.scanForPeripherals(withServices: [serviceUUID])
-                }
-            }
-            group.addTask { @Sendable in
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw BleTransportError.scanTimeout
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
+    func scan(
+        timeout: TimeInterval = 5,
+        serviceUUID filterUUID: CBUUID? = serviceUUID
+    ) async throws -> [ScannedDevice] {
+        let cm = try await ensureCentralManager()
+
+        scanResults = [:]
+        scanAccumulating = true
+
+        let serviceUUIDs: [CBUUID]? = filterUUID.map { [$0] }
+        cm.scanForPeripherals(withServices: serviceUUIDs)
+
+        try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
 
         cm.stopScan()
+        scanAccumulating = false
+
+        return scanResults.values.sorted { $0.rssi > $1.rssi }
+    }
+
+    func connect(device: ScannedDevice) async throws {
+        let cm = try await ensureCentralManager()
+
+        let foundPeripheral = device.peripheral
         self.peripheral = foundPeripheral
         foundPeripheral.delegate = self
 
@@ -171,8 +200,26 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
         advertisementData: [String: Any],
         rssi: NSNumber
     ) {
-        scanContinuation?.resume(returning: peripheral)
-        scanContinuation = nil
+        if scanAccumulating {
+            let mfgData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+            let svcData = (advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]) ?? [:]
+            let svcUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+            let connectable = (advertisementData[CBAdvertisementDataIsConnectable] as? NSNumber)?.boolValue ?? true
+
+            scanResults[peripheral.identifier] = ScannedDevice(
+                id: peripheral.identifier,
+                name: peripheral.name,
+                rssi: rssi.intValue,
+                manufacturerData: mfgData,
+                serviceData: svcData,
+                serviceUUIDs: svcUUIDs,
+                isConnectable: connectable,
+                peripheral: peripheral
+            )
+        } else {
+            scanContinuation?.resume(returning: peripheral)
+            scanContinuation = nil
+        }
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

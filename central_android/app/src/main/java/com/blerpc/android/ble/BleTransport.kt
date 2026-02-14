@@ -6,6 +6,7 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.os.ParcelUuid
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import java.util.UUID
@@ -15,6 +16,17 @@ import kotlin.coroutines.resumeWithException
 private val SERVICE_UUID = UUID.fromString("12340001-0000-1000-8000-00805f9b34fb")
 private val CHAR_UUID = UUID.fromString("12340002-0000-1000-8000-00805f9b34fb")
 private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+data class ScannedDevice(
+    val name: String?,
+    val address: String,
+    val rssi: Int,
+    val manufacturerData: Map<Int, ByteArray>,
+    val serviceData: Map<String, ByteArray>,
+    val serviceUuids: List<String>,
+    val rawBytes: ByteArray?,
+    internal val device: BluetoothDevice
+)
 
 @SuppressLint("MissingPermission")
 class BleTransport(private val context: Context) {
@@ -80,43 +92,71 @@ class BleTransport(private val context: Context) {
         }
     }
 
-    suspend fun connect(deviceName: String = "blerpc", timeout: Long = 10000) {
+    suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = SERVICE_UUID): List<ScannedDevice> {
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         val scanner = adapter.bluetoothLeScanner
             ?: throw IllegalStateException("BLE scanner not available")
 
-        // Scan for device
-        val device = withTimeout(timeout) {
-            suspendCancellableCoroutine { cont ->
-                var resumed = false
-                val callback = object : ScanCallback() {
-                    override fun onScanResult(callbackType: Int, result: ScanResult) {
-                        if (!resumed && result.device.name == deviceName) {
-                            resumed = true
-                            scanner.stopScan(this)
-                            cont.resume(result.device)
-                        }
-                    }
+        val results = mutableMapOf<String, ScannedDevice>()
 
-                    override fun onScanFailed(errorCode: Int) {
-                        if (!resumed) {
-                            resumed = true
-                            cont.resumeWithException(RuntimeException("Scan failed: $errorCode"))
-                        }
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                val record = result.scanRecord
+                val mfgData = mutableMapOf<Int, ByteArray>()
+                record?.manufacturerSpecificData?.let { sparse ->
+                    for (i in 0 until sparse.size()) {
+                        mfgData[sparse.keyAt(i)] = sparse.valueAt(i)
                     }
                 }
-                val settings = ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                    .build()
-                scanner.startScan(null, settings, callback)
-                cont.invokeOnCancellation { scanner.stopScan(callback) }
+                val svcData = mutableMapOf<String, ByteArray>()
+                record?.serviceData?.forEach { (uuid, data) ->
+                    svcData[uuid.toString()] = data
+                }
+                val svcUuids = record?.serviceUuids?.map { it.toString() } ?: emptyList()
+
+                results[result.device.address] = ScannedDevice(
+                    name = result.device.name,
+                    address = result.device.address,
+                    rssi = result.rssi,
+                    manufacturerData = mfgData,
+                    serviceData = svcData,
+                    serviceUuids = svcUuids,
+                    rawBytes = record?.bytes,
+                    device = result.device
+                )
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                // Scan failed, results will be empty
             }
         }
 
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        val filters = if (serviceUuid != null) {
+            listOf(
+                ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid(serviceUuid))
+                    .build()
+            )
+        } else {
+            null
+        }
+
+        scanner.startScan(filters, settings, callback)
+        delay(timeout)
+        scanner.stopScan(callback)
+
+        return results.values.sortedByDescending { it.rssi }
+    }
+
+    suspend fun connect(device: ScannedDevice) {
         // Connect
         val success = suspendCancellableCoroutine { cont ->
             connectCont = { ok -> cont.resume(ok) }
-            gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            gatt = device.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         }
         if (!success) throw RuntimeException("Failed to connect/discover services")
 

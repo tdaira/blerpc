@@ -39,6 +39,8 @@ static K_SEM_DEFINE(mtu_sem, 0, 1);
 
 /* ── Scan callbacks ──────────────────────────────────────────────────── */
 
+static const char *target_device_name;
+
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                          struct net_buf_simple *ad)
 {
@@ -47,9 +49,11 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         return;
     }
 
-    /* Check advertisement data for device name "blerpc" */
+    /* Check advertisement data for target device name */
     struct net_buf_simple_state state;
     net_buf_simple_save(ad, &state);
+
+    size_t target_len = strlen(target_device_name);
 
     while (ad->len > 1) {
         uint8_t field_len = net_buf_simple_pull_u8(ad);
@@ -60,11 +64,11 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
         field_len--; /* Exclude type byte */
 
         if ((field_type == BT_DATA_NAME_COMPLETE || field_type == BT_DATA_NAME_SHORTENED) &&
-            field_len == 6 && memcmp(ad->data, "blerpc", 6) == 0) {
+            field_len == target_len && memcmp(ad->data, target_device_name, target_len) == 0) {
             /* Found it */
             char addr_str[BT_ADDR_LE_STR_LEN];
             bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
-            LOG_INF("Found 'blerpc' device: %s (RSSI %d)", addr_str, rssi);
+            LOG_INF("Found '%s' device: %s (RSSI %d)", target_device_name, addr_str, rssi);
 
             int err = bt_le_scan_stop();
             if (err) {
@@ -325,11 +329,12 @@ void ble_central_init(ble_central_response_cb_t resp_cb, ble_central_error_cb_t 
     container_assembler_init(&assembler);
 }
 
-int ble_central_connect(void)
+int ble_central_connect(const char *device_name)
 {
     int err;
 
-    LOG_INF("Scanning for 'blerpc' peripheral...");
+    target_device_name = device_name;
+    LOG_INF("Scanning for '%s' peripheral...", device_name);
 
     err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
     if (err) {

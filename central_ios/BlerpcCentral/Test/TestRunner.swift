@@ -13,7 +13,7 @@ final class TestRunner: ObservableObject {
         logs.append(msg)
     }
 
-    func runAll(iterations: Int = 1) async {
+    func runAll(iterations: Int = 1, device: ScannedDevice? = nil) async {
         guard !running else { return }
         running = true
         logs = []
@@ -22,8 +22,21 @@ final class TestRunner: ObservableObject {
 
         let client = BlerpcClient()
         do {
-            log("Connecting to blerpc peripheral...")
-            try await client.connect()
+            let target: ScannedDevice
+            if let device = device {
+                target = device
+            } else {
+                log("Scanning for blerpc peripherals...")
+                let devices = try await client.scan()
+                guard let first = devices.first else {
+                    log("[ERROR] No blerpc devices found")
+                    running = false
+                    return
+                }
+                target = first
+            }
+            log("Connecting to \(target.name ?? target.id.uuidString)...")
+            try await client.connect(device: target)
             let mtu = client.mtu
             log("Connected. MTU=\(mtu)")
 

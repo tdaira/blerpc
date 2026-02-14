@@ -2,9 +2,11 @@ package com.blerpc.android.client
 
 import android.content.Context
 import com.blerpc.android.ble.BleTransport
+import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.protocol.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.UUID
 
 class PayloadTooLargeError(actual: Int, limit: Int) :
     Exception("Request payload ($actual bytes) exceeds peripheral limit ($limit bytes)")
@@ -21,8 +23,12 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
     val mtu: Int get() = transport.mtu
 
-    suspend fun connect(deviceName: String = "blerpc", timeout: Long = 10000) {
-        transport.connect(deviceName, timeout)
+    suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = null): List<ScannedDevice> {
+        return transport.scan(timeout, serviceUuid)
+    }
+
+    suspend fun connect(device: ScannedDevice) {
+        transport.connect(device)
         splitter = ContainerSplitter(mtu = transport.mtu)
 
         try {

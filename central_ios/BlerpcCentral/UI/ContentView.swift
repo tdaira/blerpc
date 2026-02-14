@@ -3,6 +3,9 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var testRunner: TestRunner
     @State private var isRunning = false
+    @State private var isScanning = false
+    @State private var scannedDevices: [ScannedDevice] = []
+    @State private var showCopied = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -10,18 +13,102 @@ struct ContentView: View {
                 .font(.title)
                 .padding(.top, 16)
 
-            Button(action: {
-                isRunning = true
-                Task {
-                    await testRunner.runAll()
-                    isRunning = false
+            HStack(spacing: 12) {
+                Button(action: {
+                    isScanning = true
+                    scannedDevices = []
+                    Task {
+                        do {
+                            let client = BlerpcClient()
+                            scannedDevices = try await client.scan()
+                        } catch {
+                            testRunner.logs.append("[ERROR] Scan failed: \(error)")
+                        }
+                        isScanning = false
+                    }
+                }) {
+                    Text(isScanning ? "Scanning..." : "Scan")
+                        .frame(maxWidth: .infinity)
                 }
-            }) {
-                Text(isRunning ? "Running..." : "Run Tests")
-                    .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .disabled(isScanning || isRunning)
+
+                Button(action: {
+                    isRunning = true
+                    Task {
+                        await testRunner.runAll()
+                        isRunning = false
+                    }
+                }) {
+                    Text(isRunning ? "Running..." : "Run Tests")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRunning || isScanning)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isRunning)
+            .padding(.horizontal, 16)
+
+            if !scannedDevices.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Devices (\(scannedDevices.count))")
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(scannedDevices) { device in
+                                Button(action: {
+                                    scannedDevices = []
+                                    isRunning = true
+                                    Task {
+                                        await testRunner.runAll(device: device)
+                                        isRunning = false
+                                    }
+                                }) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(device.name ?? "Unknown")
+                                                .font(.system(size: 15, weight: .medium))
+                                                .foregroundColor(.primary)
+                                            Text(device.id.uuidString)
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Text("\(device.rssi) dBm")
+                                            .font(.system(size: 13, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                }
+                                .disabled(isRunning)
+                                Divider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 200)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button(action: {
+                    UIPasteboard.general.string = testRunner.logs.joined(separator: "\n")
+                    showCopied = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+                        showCopied = false
+                    }
+                }) {
+                    Label(showCopied ? "Copied!" : "Copy Logs", systemImage: showCopied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 13))
+                }
+                .disabled(testRunner.logs.isEmpty)
+            }
             .padding(.horizontal, 16)
 
             ScrollViewReader { proxy in

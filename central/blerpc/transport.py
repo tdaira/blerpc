@@ -4,15 +4,30 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 
 from bleak import BleakClient, BleakScanner
+from bleak.backends.device import BLEDevice
 
 logger = logging.getLogger(__name__)
 
 SERVICE_UUID = "12340001-0000-1000-8000-00805f9b34fb"
 CHAR_UUID = "12340002-0000-1000-8000-00805f9b34fb"
-DEVICE_NAME = "blerpc"
 DEFAULT_TIMEOUT_S = 0.1  # 100ms
+
+
+@dataclass
+class ScannedDevice:
+    """A BLE device discovered during scanning."""
+
+    name: str | None
+    address: str
+    rssi: int
+    manufacturer_data: dict[int, bytes] = field(default_factory=dict)
+    service_data: dict[str, bytes] = field(default_factory=dict)
+    service_uuids: list[str] = field(default_factory=list)
+    tx_power: int | None = None
+    _bleak_device: BLEDevice = field(repr=False, default=None)
 
 
 class BleTransport:
@@ -27,15 +42,38 @@ class BleTransport:
     def mtu(self) -> int:
         return self._mtu
 
-    async def connect(self, device_name: str = DEVICE_NAME, timeout: float = 10.0):
-        """Scan for device by name and connect."""
-        logger.info("Scanning for device '%s'...", device_name)
-        device = await BleakScanner.find_device_by_name(device_name, timeout=timeout)
-        if device is None:
-            raise ConnectionError(f"Device '{device_name}' not found")
+    async def scan(
+        self,
+        timeout: float = 5.0,
+        service_uuid: str | None = SERVICE_UUID,
+    ) -> list[ScannedDevice]:
+        """Scan for BLE devices. If service_uuid is set, filter by it."""
+        service_uuids = [service_uuid] if service_uuid else None
+        devices = await BleakScanner.discover(
+            timeout=timeout,
+            return_adv=True,
+            service_uuids=service_uuids,
+        )
+        result = []
+        for device, adv_data in devices.values():
+            result.append(
+                ScannedDevice(
+                    name=device.name,
+                    address=device.address,
+                    rssi=adv_data.rssi,
+                    manufacturer_data=dict(adv_data.manufacturer_data),
+                    service_data={str(k): v for k, v in adv_data.service_data.items()},
+                    service_uuids=list(adv_data.service_uuids),
+                    tx_power=adv_data.tx_power,
+                    _bleak_device=device,
+                )
+            )
+        return sorted(result, key=lambda d: d.rssi, reverse=True)
 
+    async def connect(self, device: ScannedDevice):
+        """Connect to a previously scanned device."""
         logger.info("Connecting to %s...", device.address)
-        self._client = BleakClient(device)
+        self._client = BleakClient(device._bleak_device)
         await self._client.connect()
 
         # Get negotiated MTU

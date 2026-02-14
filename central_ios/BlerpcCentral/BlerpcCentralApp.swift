@@ -14,6 +14,7 @@ struct BlerpcCentralApp: App {
                         .first(where: { $0.name == "iterations" })
                         .flatMap { Int($0.value ?? "1") } ?? 1
                     Task {
+                        // Auto-run: scan and connect to first device
                         await testRunner.runAll(iterations: iterations)
                     }
                 }

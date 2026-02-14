@@ -1,4 +1,5 @@
 import BlerpcProtocol
+import CoreBluetooth
 import Foundation
 
 enum BlerpcClientError: Error {
@@ -20,8 +21,15 @@ final class BlerpcClient: GeneratedClientProtocol {
 
     var mtu: Int { transport.mtu }
 
-    func connect(deviceName: String = "blerpc", timeout: TimeInterval = 10) async throws {
-        try await transport.connect(deviceName: deviceName, timeout: timeout)
+    func scan(
+        timeout: TimeInterval = 5,
+        serviceUUID filterUUID: CBUUID? = serviceUUID
+    ) async throws -> [ScannedDevice] {
+        return try await transport.scan(timeout: timeout, serviceUUID: filterUUID)
+    }
+
+    func connect(device: ScannedDevice) async throws {
+        try await transport.connect(device: device)
         let mtuVal = transport.mtu
         splitter = ContainerSplitter(mtu: mtuVal)
 

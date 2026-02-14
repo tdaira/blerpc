@@ -16,7 +16,16 @@ async def main():
     client = BlerpcClient()
 
     try:
-        await client.connect()
+        devices = await client.scan()
+        if not devices:
+            raise ConnectionError("No blerpc devices found")
+        logger.info(
+            "Found %d device(s), connecting to %s (RSSI %d)...",
+            len(devices),
+            devices[0].name,
+            devices[0].rssi,
+        )
+        await client.connect(devices[0])
         logger.info("MTU: %d", client.mtu)
 
         # Echo test

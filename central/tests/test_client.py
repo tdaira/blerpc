@@ -36,7 +36,10 @@ class MockTransport:
     def is_connected(self) -> bool:
         return True
 
-    async def connect(self, **kwargs):
+    async def scan(self, **kwargs):
+        return []
+
+    async def connect(self, device):
         pass
 
     async def write(self, data: bytes):

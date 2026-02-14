@@ -1,5 +1,9 @@
 source "Kconfig.zephyr"
 
+config BLERPC_DEVICE_NAME
+	string "BLE device name for advertising"
+	default "blerpc"
+
 config BLERPC_TIMEOUT_MS
 	int "Default timeout in milliseconds"
 	default 100

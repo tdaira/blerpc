@@ -21,7 +21,10 @@ pytestmark = pytest.mark.skipif(
 async def client():
     c = BlerpcClient()
     try:
-        await c.connect(timeout=15.0)
+        devices = await c.scan(timeout=15.0)
+        if not devices:
+            pytest.skip("No blerpc peripheral found")
+        await c.connect(devices[0])
         c._timeout_s = 5.0  # Use generous timeout for integration tests
         yield c
     except Exception:
