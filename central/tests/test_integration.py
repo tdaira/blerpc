@@ -182,7 +182,7 @@ async def test_data_write_throughput(client):
 
 @pytest.mark.asyncio
 async def test_response_too_large(client):
-    """flash_read(0, 128) should trigger ResponseTooLargeError when MAX_RESPONSE_PAYLOAD_SIZE=100."""
+    """flash_read(0, 128) should trigger ResponseTooLargeError."""
     if client.max_response_payload_size is None:
         pytest.skip("Peripheral did not report capabilities")
     if client.max_response_payload_size > 100:

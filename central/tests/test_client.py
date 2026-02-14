@@ -369,7 +369,7 @@ async def test_counter_stream_empty():
 
 @pytest.mark.asyncio
 async def test_counter_upload():
-    """Test C→P stream: send N counter requests, STREAM_END_C2P, receive final response."""
+    """Test C->P stream: send N requests, STREAM_END_C2P, get response."""
     transport = MockTransport()
     client = make_client(transport)
 

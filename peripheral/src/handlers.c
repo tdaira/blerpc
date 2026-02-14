@@ -174,9 +174,8 @@ static int send_one_counter_stream_response(uint32_t seq, int32_t value)
 
     /* Build command response */
     static uint8_t cmd_buf[64];
-    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_stream", 14,
-                                    pb_buf, (uint16_t)ostream.bytes_written,
-                                    cmd_buf, sizeof(cmd_buf));
+    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_stream", 14, pb_buf,
+                                    (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
     if (cmd_len < 0) {
         return -1;
     }
@@ -184,8 +183,7 @@ static int send_one_counter_stream_response(uint32_t seq, int32_t value)
     /* Send via containers with retry */
     uint8_t tid = ble_service_next_transaction_id();
     uint16_t mtu = ble_service_get_mtu();
-    return container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
-                                    notify_send_cb, NULL);
+    return container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, notify_send_cb, NULL);
 }
 
 int handle_counter_stream(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
@@ -274,9 +272,8 @@ static void send_upload_response(struct k_work *work)
 
     /* Build command response */
     static uint8_t cmd_buf[64];
-    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_upload", 14,
-                                    pb_buf, (uint16_t)ostream.bytes_written,
-                                    cmd_buf, sizeof(cmd_buf));
+    int cmd_len = command_serialize(COMMAND_TYPE_RESPONSE, "counter_upload", 14, pb_buf,
+                                    (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return;
@@ -285,8 +282,7 @@ static void send_upload_response(struct k_work *work)
     /* Send via containers */
     uint8_t tid = ble_service_next_transaction_id();
     uint16_t mtu = ble_service_get_mtu();
-    container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
-                             notify_send_cb, NULL);
+    container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, notify_send_cb, NULL);
 }
 
 void handlers_stream_init(void)

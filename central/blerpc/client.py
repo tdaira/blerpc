@@ -15,7 +15,6 @@ from blerpc_protocol.container import (
     ControlCmd,
     make_capabilities_request,
     make_stream_end_c2p,
-    make_stream_end_p2c,
     make_timeout_request,
 )
 
@@ -38,7 +37,7 @@ class PayloadTooLargeError(Exception):
 
 
 class ResponseTooLargeError(Exception):
-    """Raised when the peripheral reports that the response exceeds its max_response_payload_size."""
+    """Raised when the response exceeds max_response_payload_size."""
 
 
 class BlerpcClient(GeneratedClientMixin):
@@ -234,7 +233,7 @@ class BlerpcClient(GeneratedClientMixin):
         messages: list[bytes],
         final_cmd_name: str,
     ) -> bytes:
-        """C->P stream: send multiple requests, then STREAM_END_C2P, return final response data.
+        """C->P stream: send requests, STREAM_END_C2P, return response.
 
         Each item in messages is protobuf-encoded request data.
         After sending all messages + STREAM_END_C2P, waits for a final response
@@ -285,12 +284,13 @@ class BlerpcClient(GeneratedClientMixin):
             raise RuntimeError(f"Expected response, got type={resp.cmd_type}")
         if resp.cmd_name != final_cmd_name:
             raise RuntimeError(
-                f"Command name mismatch: expected '{final_cmd_name}', got '{resp.cmd_name}'"
+                f"Command name mismatch: expected "
+                f"'{final_cmd_name}', got '{resp.cmd_name}'"
             )
         return resp.data
 
     async def counter_stream(self, count: int) -> list:
-        """P->C stream: request count counter values, return list of (seq, value) tuples."""
+        """P->C stream: request counter values, return (seq, value) list."""
         req = blerpc_pb2.CounterStreamRequest(count=count)
         results = []
         async for data in self.stream_receive(

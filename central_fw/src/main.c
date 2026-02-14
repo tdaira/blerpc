@@ -435,9 +435,8 @@ static int test_counter_stream(void)
 
     /* Send request (use rpc_call's sending part manually) */
     static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
-    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14,
-                                    req_buf, (uint16_t)ostream.bytes_written,
-                                    cmd_buf, sizeof(cmd_buf));
+    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14, req_buf,
+                                    (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return -1;
@@ -526,9 +525,8 @@ static int test_counter_upload(void)
         }
 
         static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
-        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_upload", 14,
-                                        req_buf, (uint16_t)ostream.bytes_written,
-                                        cmd_buf, sizeof(cmd_buf));
+        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_upload", 14, req_buf,
+                                        (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
         if (cmd_len < 0) {
             LOG_ERR("Command serialize failed at %u", i);
             return -1;
@@ -536,8 +534,7 @@ static int test_counter_upload(void)
 
         uint8_t tid = next_transaction_id();
         uint16_t mtu = ble_central_get_mtu();
-        int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu,
-                                          send_container, NULL);
+        int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, send_container, NULL);
         if (rc < 0) {
             LOG_ERR("Container split/send failed at %u: %d", i, rc);
             return -1;

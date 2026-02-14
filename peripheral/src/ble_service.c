@@ -187,7 +187,7 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
             .control_cmd = CONTROL_CMD_ERROR,
             .payload_len = 1,
         };
-        uint8_t err_payload[1] = { BLERPC_ERROR_RESPONSE_TOO_LARGE };
+        uint8_t err_payload[1] = {BLERPC_ERROR_RESPONSE_TOO_LARGE};
         ctrl.payload = err_payload;
         int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
         if (n > 0) {
