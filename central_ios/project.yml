@@ -1,0 +1,23 @@
+name: BlerpcCentral
+options:
+  bundleIdPrefix: com.blerpc
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  BlerpcProtocol:
+    url: https://github.com/tdaira/blerpc-protocol-swift
+    from: 0.1.0
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf.git
+    from: 1.28.0
+targets:
+  BlerpcCentral:
+    type: application
+    platform: iOS
+    sources: [BlerpcCentral]
+    settings:
+      base:
+        INFOPLIST_FILE: BlerpcCentral/Info.plist
+    dependencies:
+      - package: BlerpcProtocol
+      - package: SwiftProtobuf

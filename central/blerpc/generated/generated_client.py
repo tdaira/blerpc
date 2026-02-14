@@ -11,7 +11,7 @@ class GeneratedClientMixin:
     Override in subclass for custom return types.
     """
 
-    async def echo(self, *, message=""):
+    async def echo(self, *, message=''):
         """Call the echo command."""
         req = blerpc_pb2.EchoRequest(message=message)
         resp_data = await self._call("echo", req.SerializeToString())
@@ -27,7 +27,7 @@ class GeneratedClientMixin:
         resp.ParseFromString(resp_data)
         return resp
 
-    async def data_write(self, *, data=b""):
+    async def data_write(self, *, data=b''):
         """Call the data_write command."""
         req = blerpc_pb2.DataWriteRequest(data=data)
         resp_data = await self._call("data_write", req.SerializeToString())

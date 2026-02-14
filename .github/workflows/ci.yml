@@ -53,3 +53,22 @@ jobs:
             central_fw/src/main.c \
             central_fw/src/ble_central.c \
             central_fw/src/ble_central.h
+
+  ios-build:
+    name: iOS Build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: central_ios
+        run: xcodegen generate
+      - name: Build
+        working-directory: central_ios
+        run: |
+          xcodebuild -project BlerpcCentral.xcodeproj \
+            -scheme BlerpcCentral \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
