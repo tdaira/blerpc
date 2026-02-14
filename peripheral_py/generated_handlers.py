@@ -3,7 +3,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'central'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "central"))
 from blerpc.generated import blerpc_pb2
 
 

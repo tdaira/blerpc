@@ -98,8 +98,8 @@ var swiftDefaults = map[string]string{
 
 // pythonDefaults maps proto field types to Python default values.
 var pythonDefaults = map[string]string{
-	"string": "''",
-	"bytes":  "b''",
+	"string": `""`,
+	"bytes":  `b""`,
 	"uint32": "0",
 	"int32":  "0",
 	"uint64": "0",
@@ -366,7 +366,7 @@ func generatePyHandlers(commands []Command) string {
 	b.WriteString("import os\n")
 	b.WriteString("import sys\n")
 	b.WriteByte('\n')
-	b.WriteString("sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'central'))\n")
+	b.WriteString("sys.path.insert(0, os.path.join(os.path.dirname(__file__), \"..\", \"central\"))\n")
 	b.WriteString("from blerpc.generated import blerpc_pb2\n")
 	b.WriteByte('\n')
 	b.WriteByte('\n')
