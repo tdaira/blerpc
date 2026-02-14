@@ -374,8 +374,7 @@ static const struct bt_data ad[] = {
 };
 
 static const struct bt_data sd[] = {
-    BT_DATA(BT_DATA_NAME_COMPLETE,
-            CONFIG_BLERPC_DEVICE_NAME,
+    BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BLERPC_DEVICE_NAME,
             sizeof(CONFIG_BLERPC_DEVICE_NAME) - 1),
 };
 
