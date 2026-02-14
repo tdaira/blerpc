@@ -11,10 +11,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("https://maven.pkg.github.com/tdaira/blerpc-protocol-kt")
+            credentials {
+                username = providers.gradleProperty("gpr.user").getOrElse(System.getenv("GITHUB_ACTOR") ?: "")
+                password = providers.gradleProperty("gpr.key").getOrElse(System.getenv("GITHUB_TOKEN") ?: "")
+            }
+        }
     }
 }
-
-includeBuild("../blerpc-protocol-kt")
 
 rootProject.name = "blerpc-android"
 include(":app")
