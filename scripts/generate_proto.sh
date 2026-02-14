@@ -25,9 +25,10 @@ else
     echo "nanopb not found, skipping C code generation."
 fi
 
-# Generate handler stubs and client code
+# Generate handler stubs and client code (C, Python, Kotlin)
 go run "$PROJECT_ROOT/tools/generate-handlers" -root "$PROJECT_ROOT"
 echo "Handler and client code generated."
+echo "Generated Kotlin client"
 
 # Format generated Python files if ruff is available
 if python3 -m ruff --version >/dev/null 2>&1; then

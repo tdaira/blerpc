@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package blerpc;
+
+message EchoRequest {
+  string message = 1;
+}
+
+message EchoResponse {
+  string message = 1;
+}
+
+message FlashReadRequest {
+  uint32 address = 1;
+  uint32 length = 2;
+}
+
+message FlashReadResponse {
+  uint32 address = 1;
+  bytes data = 2;
+}
+
+message DataWriteRequest {
+  bytes data = 1;
+}
+
+message DataWriteResponse {
+  uint32 length = 1;
+}
+
+message CounterStreamRequest {
+  uint32 count = 1;
+}
+
+message CounterStreamResponse {
+  uint32 seq = 1;
+  int32 value = 2;
+}
+
+message CounterUploadRequest {
+  uint32 seq = 1;
+  int32 value = 2;
+}
+
+message CounterUploadResponse {
+  uint32 received_count = 1;
+}
