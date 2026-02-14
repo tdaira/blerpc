@@ -15,9 +15,14 @@ targets:
     type: application
     platform: iOS
     sources: [BlerpcCentral]
-    settings:
-      base:
-        INFOPLIST_FILE: BlerpcCentral/Info.plist
+    info:
+      path: BlerpcCentral/Info.plist
+      properties:
+        CFBundleDisplayName: BlerpcCentral
+        NSBluetoothAlwaysUsageDescription: BlerpcCentral needs Bluetooth to communicate with BLE peripherals.
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - blerpc
     dependencies:
       - package: BlerpcProtocol
       - package: SwiftProtobuf
