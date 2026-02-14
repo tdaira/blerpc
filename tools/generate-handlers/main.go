@@ -119,7 +119,7 @@ func parseProto(path string) ([]Message, error) {
 				continue
 			}
 			num := 0
-			fmt.Sscanf(f.FieldNumber, "%d", &num)
+			_, _ = fmt.Sscanf(f.FieldNumber, "%d", &num)
 			m.Fields = append(m.Fields, Field{
 				Type:   f.Type,
 				Name:   f.FieldName,
@@ -151,10 +151,7 @@ func parseOptions(path string) (map[string]bool, error) {
 		if strings.Contains(line, "FT_CALLBACK") {
 			parts := strings.Fields(line)
 			if len(parts) > 0 {
-				qualified := parts[0]
-				if strings.HasPrefix(qualified, "blerpc.") {
-					qualified = qualified[len("blerpc."):]
-				}
+				qualified := strings.TrimPrefix(parts[0], "blerpc.")
 				callbacks[qualified] = true
 			}
 		}
