@@ -12,8 +12,32 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/generate-handlers/go.mod
+          cache-dependency-path: tools/generate-handlers/go.sum
+      - name: gofmt check
+        working-directory: tools/generate-handlers
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: tools/generate-handlers
+
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       matrix:

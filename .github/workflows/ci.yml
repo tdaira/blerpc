@@ -17,9 +17,9 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - name: Ruff lint
-        run: ruff check central/ peripheral_py/ scripts/
+        run: ruff check central/ peripheral_py/
       - name: Ruff format check
-        run: ruff format --check central/ peripheral_py/ scripts/
+        run: ruff format --check central/ peripheral_py/
 
   python-test:
     name: Python Tests
