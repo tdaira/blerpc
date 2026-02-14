@@ -263,8 +263,8 @@ class BlerpcPeripheral:
         count = self._upload_count
         self._upload_count = 0
         logger.info(
-            "STREAM_END_C2P: sending counter_upload response, "
-            "received_count=%d", count,
+            "STREAM_END_C2P: sending counter_upload response, received_count=%d",
+            count,
         )
 
         resp = blerpc_pb2.CounterUploadResponse(received_count=count)

@@ -222,9 +222,7 @@ class BlerpcClient(GeneratedClientMixin):
             if result is not None:
                 resp = CommandPacket.deserialize(result)
                 if resp.cmd_type != CommandType.RESPONSE:
-                    raise RuntimeError(
-                        f"Expected response, got type={resp.cmd_type}"
-                    )
+                    raise RuntimeError(f"Expected response, got type={resp.cmd_type}")
                 yield resp.data
 
     async def stream_send(
@@ -307,9 +305,7 @@ class BlerpcClient(GeneratedClientMixin):
         for i in range(count):
             req = blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10)
             messages.append(req.SerializeToString())
-        resp_data = await self.stream_send(
-            "counter_upload", messages, "counter_upload"
-        )
+        resp_data = await self.stream_send("counter_upload", messages, "counter_upload")
         resp = blerpc_pb2.CounterUploadResponse()
         resp.ParseFromString(resp_data)
         return resp.received_count
