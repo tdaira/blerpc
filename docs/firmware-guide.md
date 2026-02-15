@@ -38,16 +38,16 @@ All build commands should be run from the project root (`blerpc/`).
 **nRF54L15 DK:**
 
 ```bash
-$WEST -z ~/ncs/zephyr build -d peripheral/build \
-  -b nrf54l15dk/nrf54l15/cpuapp peripheral \
+$WEST -z ~/ncs/zephyr build -d peripheral_fw/build \
+  -b nrf54l15dk/nrf54l15/cpuapp peripheral_fw \
   -- -DNCS_TOOLCHAIN_VERSION=NONE
 ```
 
 **EFR32xG22E EK:**
 
 ```bash
-$WEST -z ~/ncs/zephyr build -d peripheral/build_xg22 \
-  -b xg22_ek2710a peripheral \
+$WEST -z ~/ncs/zephyr build -d peripheral_fw/build_xg22 \
+  -b xg22_ek2710a peripheral_fw \
   -- -DNCS_TOOLCHAIN_VERSION=NONE -DBOARD_ROOT=$(pwd)
 ```
 
@@ -75,7 +75,7 @@ $WEST -z ~/ncs/zephyr build -d central_fw/build \
 Uses `nrfutil` runner (auto-detected by west):
 
 ```bash
-$WEST -z ~/ncs/zephyr flash -d peripheral/build
+$WEST -z ~/ncs/zephyr flash -d peripheral_fw/build
 ```
 
 or for central:
@@ -93,7 +93,7 @@ If the board is not detected, check that:
 Uses `jlink` runner (auto-detected by west):
 
 ```bash
-$WEST -z ~/ncs/zephyr flash -d peripheral/build_xg22
+$WEST -z ~/ncs/zephyr flash -d peripheral_fw/build_xg22
 ```
 
 ### Resetting Without Reflashing
@@ -144,7 +144,7 @@ the RTT logger before resetting the board.
 
 The EFR32xG22E board has only 32 KB RAM. To fit RTT logging, flash
 support is disabled and buffer sizes are reduced. The board config
-(`peripheral/boards/xg22_ek2710a.conf`) enables `CONFIG_LOG_MODE_MINIMAL`
+(`peripheral_fw/boards/xg22_ek2710a.conf`) enables `CONFIG_LOG_MODE_MINIMAL`
 which routes `LOG_INF` etc. through `printk` to an RTT console with a
 128-byte buffer.
 
@@ -173,7 +173,7 @@ If the address changes after code modifications, find the new address:
 
 ```bash
 ~/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-nm \
-  peripheral/build_xg22/peripheral/zephyr/zephyr.elf | grep _SEGGER_RTT
+  peripheral_fw/build_xg22/peripheral_fw/zephyr/zephyr.elf | grep _SEGGER_RTT
 ```
 
 Then pass it: `python3 tools/rtt_reader.py --rtt-address 0xNEWADDR`
@@ -185,7 +185,7 @@ Then pass it: `python3 tools/rtt_reader.py --rtt-address 0xNEWADDR`
 python3 tools/rtt_reader.py
 
 # Terminal 2: Run integration tests
-cd central && python3 -m pytest tests/test_integration.py -v -s
+cd central_py && python3 -m pytest tests/test_integration.py -v -s
 ```
 
 > **Important:** Flash reads are disabled in the RTT-enabled config
@@ -215,7 +215,7 @@ Mac with BLE to act as the Python Central.
 
 ```bash
 # Flash the peripheral first, then:
-cd central
+cd central_py
 python3 -m pytest tests/test_integration.py -v -s
 ```
 

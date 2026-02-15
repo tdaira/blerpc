@@ -1,1 +1,1 @@
-../../peripheral/src/blerpc.pb.h
+../../peripheral_fw/src/blerpc.pb.h

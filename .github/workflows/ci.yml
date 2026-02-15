@@ -17,9 +17,9 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - name: Ruff lint
-        run: ruff check central/ peripheral_py/
+        run: ruff check central_py/ peripheral_py/
       - name: Ruff format check
-        run: ruff format --check central/ peripheral_py/
+        run: ruff format --check central_py/ peripheral_py/
 
   python-test:
     name: Python Tests
@@ -34,7 +34,7 @@ jobs:
           pip install pytest pytest-asyncio protobuf bleak
           pip install git+https://github.com/tdaira/blerpc-protocol.git
       - name: Run unit tests
-        working-directory: central
+        working-directory: central_py
         run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
 
   c-lint:
@@ -45,11 +45,11 @@ jobs:
       - name: clang-format check
         run: |
           clang-format --dry-run --Werror \
-            peripheral/src/ble_service.c \
-            peripheral/src/ble_service.h \
-            peripheral/src/handlers.c \
-            peripheral/src/handlers.h \
-            peripheral/src/main.c \
+            peripheral_fw/src/ble_service.c \
+            peripheral_fw/src/ble_service.h \
+            peripheral_fw/src/handlers.c \
+            peripheral_fw/src/handlers.h \
+            peripheral_fw/src/main.c \
             central_fw/src/main.c \
             central_fw/src/ble_central.c \
             central_fw/src/ble_central.h

@@ -1,1 +1,1 @@
-../../peripheral/src/command.c
+../../peripheral_fw/src/command.c

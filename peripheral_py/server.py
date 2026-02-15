@@ -23,8 +23,8 @@ from blerpc_protocol.container import (
     make_stream_end_p2c,
 )
 
-# Import protobuf definitions from central/blerpc/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "central"))
+# Import protobuf definitions from central_py/blerpc/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "central_py"))
 from blerpc.generated import blerpc_pb2
 from bless import (
     BlessGATTCharacteristic,

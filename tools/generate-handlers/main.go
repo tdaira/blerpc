@@ -1,10 +1,10 @@
 // Generate handler stubs and client code from blerpc.proto.
 //
 // Parses proto file with go-protoparser (proper AST) and generates:
-//   - peripheral/src/generated_handlers.h  — C declarations + handler_entry + lookup
-//   - peripheral/src/generated_handlers.c  — weak handler stubs + handler table
+//   - peripheral_fw/src/generated_handlers.h  — C declarations + handler_entry + lookup
+//   - peripheral_fw/src/generated_handlers.c  — weak handler stubs + handler table
 //   - peripheral_py/generated_handlers.py  — Python handler stubs + HANDLERS dict
-//   - central/blerpc/generated/generated_client.py — Python client mixin class
+//   - central_py/blerpc/generated/generated_client.py — Python client mixin class
 package main
 
 import (
@@ -366,7 +366,7 @@ func generatePyHandlers(commands []Command) string {
 	b.WriteString("import os\n")
 	b.WriteString("import sys\n")
 	b.WriteByte('\n')
-	b.WriteString("sys.path.insert(0, os.path.join(os.path.dirname(__file__), \"..\", \"central\"))\n")
+	b.WriteString("sys.path.insert(0, os.path.join(os.path.dirname(__file__), \"..\", \"central_py\"))\n")
 	b.WriteString("from blerpc.generated import blerpc_pb2\n")
 	b.WriteByte('\n')
 	b.WriteByte('\n')
@@ -621,10 +621,10 @@ func main() {
 	protoFile := filepath.Join(*root, "proto", "blerpc.proto")
 	optionsFile := filepath.Join(*root, "proto", "blerpc.options")
 
-	outCHeader := filepath.Join(*root, "peripheral", "src", "generated_handlers.h")
-	outCSource := filepath.Join(*root, "peripheral", "src", "generated_handlers.c")
+	outCHeader := filepath.Join(*root, "peripheral_fw", "src", "generated_handlers.h")
+	outCSource := filepath.Join(*root, "peripheral_fw", "src", "generated_handlers.c")
 	outPyHandlers := filepath.Join(*root, "peripheral_py", "generated_handlers.py")
-	outPyClient := filepath.Join(*root, "central", "blerpc", "generated", "generated_client.py")
+	outPyClient := filepath.Join(*root, "central_py", "blerpc", "generated", "generated_client.py")
 	outKtClient := filepath.Join(*root, "central_android", "app", "src", "main", "java", "com", "blerpc", "android", "client", "GeneratedClient.kt")
 	outSwiftClient := filepath.Join(*root, "central_ios", "BlerpcCentral", "Client", "GeneratedClient.swift")
 

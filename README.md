@@ -36,11 +36,11 @@ bleRPC generates client and handler code from `.proto` files for multiple platfo
 | Directory | Description |
 |-----------|-------------|
 | `proto/` | Protocol Buffer definitions |
-| `central/` | Python Central client (macOS) |
+| `central_py/` | Python Central client (macOS) |
 | `central_fw/` | C Central firmware (nRF54L15 DK / Zephyr) |
 | `central_ios/` | Swift Central app (iOS) |
 | `central_android/` | Kotlin Central app (Android) |
-| `peripheral/` | C Peripheral firmware (nRF54L15 DK, EFR32xG22E / Zephyr) |
+| `peripheral_fw/` | C Peripheral firmware (nRF54L15 DK, EFR32xG22E / Zephyr) |
 | `peripheral_py/` | Python Peripheral server (macOS) |
 | `boards/` | Custom Zephyr board definitions |
 | `tools/` | Code generation and debugging tools |
