@@ -16,6 +16,9 @@ __pycache__/
 .vscode/
 .idea/
 
+# Go binaries
+tools/generate-handlers/generate-handlers
+
 # Gradle
 .gradle/
 local.properties

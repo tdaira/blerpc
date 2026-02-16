@@ -10,6 +10,9 @@
 
 LOG_MODULE_REGISTER(ble_central, LOG_LEVEL_INF);
 
+/* Timeout for BLE operations (scan, discovery, etc.) */
+#define BLE_OP_TIMEOUT K_SECONDS(10)
+
 /* UUIDs */
 static struct bt_uuid_128 blerpc_svc_uuid = BT_UUID_INIT_128(BLERPC_SERVICE_UUID);
 static struct bt_uuid_128 blerpc_char_uuid = BT_UUID_INIT_128(BLERPC_CHAR_UUID);
@@ -176,7 +179,10 @@ static int gatt_discover(void)
         LOG_ERR("Service discover failed (err %d)", err);
         return err;
     }
-    k_sem_take(&discover_sem, K_FOREVER);
+    if (k_sem_take(&discover_sem, BLE_OP_TIMEOUT) != 0) {
+        LOG_ERR("Service discovery timed out");
+        return -ETIMEDOUT;
+    }
 
     if (svc_start_handle == 0) {
         LOG_ERR("Service not found");
@@ -196,7 +202,10 @@ static int gatt_discover(void)
         LOG_ERR("Char discover failed (err %d)", err);
         return err;
     }
-    k_sem_take(&discover_sem, K_FOREVER);
+    if (k_sem_take(&discover_sem, BLE_OP_TIMEOUT) != 0) {
+        LOG_ERR("Characteristic discovery timed out");
+        return -ETIMEDOUT;
+    }
 
     if (char_value_handle == 0) {
         LOG_ERR("Characteristic not found");
@@ -216,7 +225,10 @@ static int gatt_discover(void)
         LOG_ERR("Descriptor discover failed (err %d)", err);
         return err;
     }
-    k_sem_take(&discover_sem, K_FOREVER);
+    if (k_sem_take(&discover_sem, BLE_OP_TIMEOUT) != 0) {
+        LOG_ERR("Descriptor discovery timed out");
+        return -ETIMEDOUT;
+    }
 
     return 0;
 }
@@ -333,6 +345,11 @@ int ble_central_connect(const char *device_name)
 {
     int err;
 
+    if (!device_name) {
+        LOG_ERR("Device name is NULL");
+        return -EINVAL;
+    }
+
     target_device_name = device_name;
     LOG_INF("Scanning for '%s' peripheral...", device_name);
 
@@ -343,7 +360,11 @@ int ble_central_connect(const char *device_name)
     }
 
     /* Wait for connection */
-    k_sem_take(&connect_sem, K_FOREVER);
+    if (k_sem_take(&connect_sem, BLE_OP_TIMEOUT) != 0) {
+        LOG_ERR("Connection timed out");
+        bt_le_scan_stop();
+        return -ETIMEDOUT;
+    }
 
     if (!current_conn) {
         LOG_ERR("Connection failed");
