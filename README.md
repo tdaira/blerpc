@@ -58,6 +58,10 @@ See the [Getting Started](https://blerpc.net/getting-started.html) guide.
 | Swift | [blerpc-protocol-swift](https://github.com/tdaira/blerpc-protocol-swift) |
 | Kotlin | [blerpc-protocol-kt](https://github.com/tdaira/blerpc-protocol-kt) |
 
+## Documentation
+
+The documentation site source is at [tdaira/tdaira.github.io](https://github.com/tdaira/tdaira.github.io).
+
 ## License
 
 [LGPL-3.0](LICENSE)
