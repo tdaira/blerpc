@@ -1,3 +1,7 @@
 bleak>=0.21.0
 protobuf>=4.25.0
+blerpc-protocol @ git+https://github.com/tdaira/blerpc-protocol.git
+
+# Dev / test
 pytest>=7.0.0
+pytest-asyncio>=0.23.0
