@@ -7,6 +7,7 @@
 #include <pb_decode.h>
 #include <string.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 #if IS_ENABLED(CONFIG_FLASH)
 #include <zephyr/drivers/flash.h>
@@ -219,7 +220,7 @@ int handle_counter_stream(const uint8_t *req_data, size_t req_len, pb_ostream_t 
 
 /* ── counter_upload: C→P stream (accumulation) ────────────────────── */
 
-static volatile uint32_t upload_count;
+static atomic_t upload_count;
 
 static void send_upload_response(struct k_work *work);
 static K_WORK_DEFINE(upload_response_work, send_upload_response);
@@ -227,7 +228,7 @@ static K_WORK_DEFINE(upload_response_work, send_upload_response);
 static void on_stream_end_c2p(uint8_t transaction_id)
 {
     (void)transaction_id;
-    LOG_INF("STREAM_END_C2P received, upload_count=%u", upload_count);
+    LOG_INF("STREAM_END_C2P received, upload_count=%ld", atomic_get(&upload_count));
     ble_service_submit_work(&upload_response_work);
 }
 
@@ -243,8 +244,9 @@ int handle_counter_upload(const uint8_t *req_data, size_t req_len, pb_ostream_t 
         return -1;
     }
 
-    upload_count++;
-    LOG_DBG("CounterUpload: seq=%u value=%d (total=%u)", req.seq, req.value, upload_count);
+    atomic_inc(&upload_count);
+    LOG_DBG("CounterUpload: seq=%u value=%d (total=%ld)", req.seq, req.value,
+            atomic_get(&upload_count));
 
     /* Return -2: no response for individual stream messages */
     return -2;
@@ -254,14 +256,13 @@ static void send_upload_response(struct k_work *work)
 {
     (void)work;
 
-    uint32_t count = upload_count;
-    upload_count = 0;
+    atomic_val_t count = atomic_set(&upload_count, 0);
 
-    LOG_INF("CounterUpload: sending response, received_count=%u", count);
+    LOG_INF("CounterUpload: sending response, received_count=%ld", count);
 
     /* Encode CounterUploadResponse */
     blerpc_CounterUploadResponse resp = blerpc_CounterUploadResponse_init_zero;
-    resp.received_count = count;
+    resp.received_count = (uint32_t)count;
 
     uint8_t pb_buf[blerpc_CounterUploadResponse_size];
     pb_ostream_t ostream = pb_ostream_from_buffer(pb_buf, sizeof(pb_buf));
