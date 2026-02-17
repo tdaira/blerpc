@@ -36,21 +36,4 @@ abstract class GeneratedClient {
         val respData = call("data_write", req.toByteArray())
         return blerpc.Blerpc.DataWriteResponse.parseFrom(respData)
     }
-
-    open suspend fun counterStream(count: Int = 0): blerpc.Blerpc.CounterStreamResponse {
-        val req = blerpc.Blerpc.CounterStreamRequest.newBuilder()
-            .setCount(count)
-            .build()
-        val respData = call("counter_stream", req.toByteArray())
-        return blerpc.Blerpc.CounterStreamResponse.parseFrom(respData)
-    }
-
-    open suspend fun counterUpload(seq: Int = 0, value: Int = 0): blerpc.Blerpc.CounterUploadResponse {
-        val req = blerpc.Blerpc.CounterUploadRequest.newBuilder()
-            .setSeq(seq)
-            .setValue(value)
-            .build()
-        val respData = call("counter_upload", req.toByteArray())
-        return blerpc.Blerpc.CounterUploadResponse.parseFrom(respData)
-    }
 }

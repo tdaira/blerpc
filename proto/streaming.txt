@@ -1,0 +1,4 @@
+# Commands that use streaming RPCs and require manual client implementation.
+# These are excluded from auto-generated client methods (Python, Kotlin, Swift).
+counter_stream
+counter_upload

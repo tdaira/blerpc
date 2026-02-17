@@ -87,8 +87,8 @@ async def test_echo_roundtrip():
     resp = blerpc_pb2.EchoResponse(message="hello")
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
 
-    result = await client.echo("hello")
-    assert result == "hello"
+    result = await client.echo(message="hello")
+    assert result.message == "hello"
 
     # Verify the request was correctly encoded
     assert len(transport._written) == 1
@@ -109,8 +109,8 @@ async def test_echo_empty():
     client = make_client(transport)
     resp = blerpc_pb2.EchoResponse(message="")
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
-    result = await client.echo("")
-    assert result == ""
+    result = await client.echo(message="")
+    assert result.message == ""
 
 
 @pytest.mark.asyncio
@@ -120,8 +120,8 @@ async def test_echo_max_length():
     msg = "A" * 256
     resp = blerpc_pb2.EchoResponse(message=msg)
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
-    result = await client.echo(msg)
-    assert result == msg
+    result = await client.echo(message=msg)
+    assert result.message == msg
 
 
 # ── Flash read tests ─────────────────────────────────────────────────────
@@ -134,8 +134,8 @@ async def test_flash_read_roundtrip():
     data = bytes(range(256)) * 4  # 1024 bytes
     resp = blerpc_pb2.FlashReadResponse(address=0x1000, data=data)
     transport.inject_response("flash_read", resp.SerializeToString(), transaction_id=0)
-    result = await client.flash_read(0x1000, 1024)
-    assert result == data
+    result = await client.flash_read(address=0x1000, length=1024)
+    assert result.data == data
 
 
 @pytest.mark.asyncio
@@ -146,9 +146,9 @@ async def test_flash_read_large():
     data = bytes([0xAB] * 8192)
     resp = blerpc_pb2.FlashReadResponse(address=0, data=data)
     transport.inject_response("flash_read", resp.SerializeToString(), transaction_id=0)
-    result = await client.flash_read(0, 8192)
-    assert len(result) == 8192
-    assert result == data
+    result = await client.flash_read(address=0, length=8192)
+    assert len(result.data) == 8192
+    assert result.data == data
 
 
 # ── Multi-container tests ────────────────────────────────────────────────
@@ -162,8 +162,8 @@ async def test_multi_container_request():
     msg = "X" * 200
     resp = blerpc_pb2.EchoResponse(message=msg)
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
-    result = await client.echo(msg)
-    assert result == msg
+    result = await client.echo(message=msg)
+    assert result.message == msg
     # Multiple write calls due to small MTU
     assert len(transport._written) > 1
 
@@ -176,8 +176,8 @@ async def test_multi_container_response():
     data = bytes(range(256))
     resp = blerpc_pb2.FlashReadResponse(address=0, data=data)
     transport.inject_response("flash_read", resp.SerializeToString(), transaction_id=0)
-    result = await client.flash_read(0, 256)
-    assert result == data
+    result = await client.flash_read(address=0, length=256)
+    assert result.data == data
 
 
 # ── Error handling tests ─────────────────────────────────────────────────
@@ -190,7 +190,7 @@ async def test_response_timeout():
     client = make_client(transport)
     client._timeout_s = 0.1
     with pytest.raises(asyncio.TimeoutError):
-        await client.echo("hello")
+        await client.echo(message="hello")
 
 
 @pytest.mark.asyncio
@@ -201,7 +201,7 @@ async def test_command_name_mismatch():
     resp = blerpc_pb2.EchoResponse(message="hello")
     transport.inject_response("wrong_cmd", resp.SerializeToString(), transaction_id=0)
     with pytest.raises(RuntimeError, match="Command name mismatch"):
-        await client.echo("hello")
+        await client.echo(message="hello")
 
 
 @pytest.mark.asyncio
@@ -223,8 +223,8 @@ async def test_control_containers_skipped():
     resp = blerpc_pb2.EchoResponse(message="hello")
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
 
-    result = await client.echo("hello")
-    assert result == "hello"
+    result = await client.echo(message="hello")
+    assert result.message == "hello"
 
 
 # ── Transaction ID tests ────────────────────────────────────────────────
@@ -239,8 +239,8 @@ async def test_sequential_calls_increment_transaction_id():
     for i in range(3):
         resp = blerpc_pb2.EchoResponse(message=f"msg{i}")
         transport.inject_response("echo", resp.SerializeToString(), transaction_id=i)
-        result = await client.echo(f"msg{i}")
-        assert result == f"msg{i}"
+        result = await client.echo(message=f"msg{i}")
+        assert result.message == f"msg{i}"
 
     assert len(transport._written) == 3
     tids = set()
@@ -261,7 +261,7 @@ async def test_payload_too_large_raises():
     client._max_request_payload_size = 50
 
     with pytest.raises(PayloadTooLargeError):
-        await client.echo("A" * 256)
+        await client.echo(message="A" * 256)
 
 
 @pytest.mark.asyncio
@@ -274,8 +274,8 @@ async def test_no_max_payload_allows_large():
     msg = "A" * 256
     resp = blerpc_pb2.EchoResponse(message=msg)
     transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
-    result = await client.echo(msg)
-    assert result == msg
+    result = await client.echo(message=msg)
+    assert result.message == msg
 
 
 # ── Response too large error tests ────────────────────────────────────────
@@ -298,7 +298,7 @@ async def test_response_too_large_error():
     transport._notify_queue.put_nowait(err_container.serialize())
 
     with pytest.raises(ResponseTooLargeError):
-        await client.echo("hello")
+        await client.echo(message="hello")
 
 
 @pytest.mark.asyncio
@@ -317,7 +317,7 @@ async def test_unknown_error_code_raises_runtime_error():
     transport._notify_queue.put_nowait(err_container.serialize())
 
     with pytest.raises(RuntimeError, match="Peripheral error: 0xff"):
-        await client.echo("hello")
+        await client.echo(message="hello")
 
 
 # ── Stream tests ──────────────────────────────────────────────────────────
