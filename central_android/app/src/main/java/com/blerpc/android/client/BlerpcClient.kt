@@ -13,6 +13,11 @@ class PayloadTooLargeError(actual: Int, limit: Int) :
 
 class ResponseTooLargeError(message: String) : Exception(message)
 
+class PeripheralErrorException(val errorCode: Byte) :
+    Exception("Peripheral error: 0x${errorCode.toInt().and(0xFF).toString(16).padStart(2, '0')}")
+
+class ProtocolException(message: String) : Exception(message)
+
 class BlerpcClient(context: Context) : GeneratedClient() {
     val transport = BleTransport(context)
     private var splitter: ContainerSplitter? = null
@@ -44,7 +49,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
     }
 
     private suspend fun requestTimeout() {
-        val s = splitter!!
+        val s = splitter ?: throw IllegalStateException("Not connected")
         val tid = s.nextTransactionId()
         val req = makeTimeoutRequest(transactionId = tid)
         transport.write(req.serialize())
@@ -60,7 +65,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
     }
 
     private suspend fun requestCapabilities() {
-        val s = splitter!!
+        val s = splitter ?: throw IllegalStateException("Not connected")
         val tid = s.nextTransactionId()
         val req = makeCapabilitiesRequest(transactionId = tid)
         transport.write(req.serialize())
@@ -110,7 +115,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
                     if (errorCode == BLERPC_ERROR_RESPONSE_TOO_LARGE) {
                         throw ResponseTooLargeError("Response exceeds peripheral's max_response_payload_size")
                     }
-                    throw RuntimeException("Peripheral error: 0x${errorCode.toString(16).padStart(2, '0')}")
+                    throw PeripheralErrorException(errorCode)
                 }
                 continue
             }
@@ -119,10 +124,10 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             if (result != null) {
                 val resp = CommandPacket.deserialize(result)
                 if (resp.cmdType != CommandType.RESPONSE) {
-                    throw RuntimeException("Expected response, got type=${resp.cmdType}")
+                    throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
                 if (resp.cmdName != cmdName) {
-                    throw RuntimeException("Command name mismatch: expected '$cmdName', got '${resp.cmdName}'")
+                    throw ProtocolException("Command name mismatch: expected '$cmdName', got '${resp.cmdName}'")
                 }
                 return resp.data
             }
@@ -167,7 +172,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
                     if (errorCode == BLERPC_ERROR_RESPONSE_TOO_LARGE) {
                         throw ResponseTooLargeError("Response exceeds peripheral's max_response_payload_size")
                     }
-                    throw RuntimeException("Peripheral error: 0x${errorCode.toString(16).padStart(2, '0')}")
+                    throw PeripheralErrorException(errorCode)
                 }
                 continue
             }
@@ -176,7 +181,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             if (result != null) {
                 val resp = CommandPacket.deserialize(result)
                 if (resp.cmdType != CommandType.RESPONSE) {
-                    throw RuntimeException("Expected response, got type=${resp.cmdType}")
+                    throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
                 results.add(resp.data)
             }
@@ -224,7 +229,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
                     if (errorCode == BLERPC_ERROR_RESPONSE_TOO_LARGE) {
                         throw ResponseTooLargeError("Response exceeds peripheral's max_response_payload_size")
                     }
-                    throw RuntimeException("Peripheral error: 0x${errorCode.toString(16).padStart(2, '0')}")
+                    throw PeripheralErrorException(errorCode)
                 }
                 continue
             }
@@ -233,10 +238,10 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             if (result != null) {
                 val resp = CommandPacket.deserialize(result)
                 if (resp.cmdType != CommandType.RESPONSE) {
-                    throw RuntimeException("Expected response, got type=${resp.cmdType}")
+                    throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
                 if (resp.cmdName != finalCmdName) {
-                    throw RuntimeException("Command name mismatch: expected '$finalCmdName', got '${resp.cmdName}'")
+                    throw ProtocolException("Command name mismatch: expected '$finalCmdName', got '${resp.cmdName}'")
                 }
                 return resp.data
             }

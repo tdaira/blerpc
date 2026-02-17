@@ -6,9 +6,9 @@ from . import blerpc_pb2
 
 
 class GeneratedClientMixin:
-    """Auto-generated RPC methods.
+    """Auto-generated unary RPC methods.
 
-    Override in subclass for custom return types.
+    Streaming RPCs are implemented manually in BlerpcClient.
     """
 
     async def echo(self, *, message=""):
@@ -32,21 +32,5 @@ class GeneratedClientMixin:
         req = blerpc_pb2.DataWriteRequest(data=data)
         resp_data = await self._call("data_write", req.SerializeToString())
         resp = blerpc_pb2.DataWriteResponse()
-        resp.ParseFromString(resp_data)
-        return resp
-
-    async def counter_stream(self, *, count=0):
-        """Call the counter_stream command."""
-        req = blerpc_pb2.CounterStreamRequest(count=count)
-        resp_data = await self._call("counter_stream", req.SerializeToString())
-        resp = blerpc_pb2.CounterStreamResponse()
-        resp.ParseFromString(resp_data)
-        return resp
-
-    async def counter_upload(self, *, seq=0, value=0):
-        """Call the counter_upload command."""
-        req = blerpc_pb2.CounterUploadRequest(seq=seq, value=value)
-        resp_data = await self._call("counter_upload", req.SerializeToString())
-        resp = blerpc_pb2.CounterUploadResponse()
         resp.ParseFromString(resp_data)
         return resp

@@ -57,39 +57,39 @@ async def test_payload_too_large(client):
     limit = client.max_request_payload_size
     # Build a message large enough to exceed the limit after protobuf+command encoding
     with pytest.raises(PayloadTooLargeError):
-        await client.echo("A" * limit)
+        await client.echo(message="A" * limit)
 
 
 @pytest.mark.asyncio
 async def test_echo_basic(client):
-    result = await client.echo("hello")
-    assert result == "hello"
+    result = await client.echo(message="hello")
+    assert result.message == "hello"
 
 
 @pytest.mark.asyncio
 async def test_echo_empty(client):
-    result = await client.echo("")
-    assert result == ""
+    result = await client.echo(message="")
+    assert result.message == ""
 
 
 @pytest.mark.asyncio
 async def test_echo_max_length(client):
     message = "A" * 256
-    result = await client.echo(message)
-    assert result == message
+    result = await client.echo(message=message)
+    assert result.message == message
 
 
 @pytest.mark.asyncio
 async def test_flash_read_basic(client):
-    data = await client.flash_read(0x00000000, 16)
-    assert len(data) == 16
+    result = await client.flash_read(address=0x00000000, length=16)
+    assert len(result.data) == 16
 
 
 @pytest.mark.asyncio
 async def test_flash_read_8kb(client):
     """Test reading 8KB in a single call."""
-    data = await client.flash_read(0x00000000, 8192)
-    assert len(data) == 8192
+    result = await client.flash_read(address=0x00000000, length=8192)
+    assert len(result.data) == 8192
 
 
 @pytest.mark.asyncio
@@ -100,12 +100,12 @@ async def test_flash_read_throughput(client):
     total_bytes = read_size * num_reads
 
     # Warm up
-    await client.flash_read(0x00000000, read_size)
+    await client.flash_read(address=0x00000000, length=read_size)
 
     start = time.monotonic()
     for i in range(num_reads):
-        data = await client.flash_read(0x00000000, read_size)
-        assert len(data) == read_size
+        result = await client.flash_read(address=0x00000000, length=read_size)
+        assert len(result.data) == read_size
     elapsed = time.monotonic() - start
 
     throughput = total_bytes / elapsed
@@ -120,18 +120,18 @@ async def test_flash_read_throughput(client):
 async def test_flash_read_overhead(client):
     """Compare 1x8KB vs 8x1KB to measure per-call overhead."""
     # Single 8KB read
-    await client.flash_read(0x00000000, 8192)  # warm up
+    await client.flash_read(address=0x00000000, length=8192)  # warm up
     start = time.monotonic()
     for _ in range(5):
-        await client.flash_read(0x00000000, 8192)
+        await client.flash_read(address=0x00000000, length=8192)
     time_8kb = (time.monotonic() - start) / 5
 
     # 8x1KB reads
-    await client.flash_read(0x00000000, 1024)  # warm up
+    await client.flash_read(address=0x00000000, length=1024)  # warm up
     start = time.monotonic()
     for _ in range(5):
         for _ in range(8):
-            await client.flash_read(0x00000000, 1024)
+            await client.flash_read(address=0x00000000, length=1024)
     time_8x1kb = (time.monotonic() - start) / 5
 
     overhead = time_8x1kb - time_8kb
@@ -146,16 +146,16 @@ async def test_flash_read_overhead(client):
 @pytest.mark.asyncio
 async def test_data_write_basic(client):
     data = bytes(range(256)) * 4  # 1024 bytes
-    confirmed = await client.data_write(data)
-    assert confirmed == len(data)
+    result = await client.data_write(data=data)
+    assert result.length == len(data)
 
 
 @pytest.mark.asyncio
 async def test_data_write_8kb(client):
     """Test writing 8KB in a single call."""
     data = bytes(range(256)) * 32  # 8192 bytes
-    confirmed = await client.data_write(data)
-    assert confirmed == 8192
+    result = await client.data_write(data=data)
+    assert result.length == 8192
 
 
 @pytest.mark.asyncio
@@ -167,12 +167,12 @@ async def test_data_write_throughput(client):
     data = bytes(range(256)) * 32  # 8192 bytes
 
     # Warm up
-    await client.data_write(data)
+    await client.data_write(data=data)
 
     start = time.monotonic()
     for i in range(num_writes):
-        confirmed = await client.data_write(data)
-        assert confirmed == write_size
+        result = await client.data_write(data=data)
+        assert result.length == write_size
     elapsed = time.monotonic() - start
 
     throughput = total_bytes / elapsed
@@ -195,7 +195,7 @@ async def test_response_too_large(client):
         )
     print(f"\nmax_response_payload_size={client.max_response_payload_size}")
     with pytest.raises(ResponseTooLargeError):
-        await client.flash_read(0, 128)
+        await client.flash_read(address=0, length=128)
 
 
 @pytest.mark.asyncio
@@ -208,16 +208,16 @@ async def test_echo_within_limit_with_small_max(client):
             f"Peripheral max_response={client.max_response_payload_size}, "
             "need <=100 for this test"
         )
-    result = await client.echo("hello")
-    assert result == "hello"
+    result = await client.echo(message="hello")
+    assert result.message == "hello"
 
 
 @pytest.mark.asyncio
 async def test_multi_container_echo(client):
     """Test echo with a message that requires multi-container transport."""
     message = "B" * 250
-    result = await client.echo(message)
-    assert result == message
+    result = await client.echo(message=message)
+    assert result.message == message
 
 
 @pytest.mark.asyncio

@@ -318,30 +318,6 @@ class BlerpcClient(GeneratedClientMixin):
         resp.ParseFromString(resp_data)
         return resp.received_count
 
-    async def echo(self, message: str) -> str:
-        """Call the echo command."""
-        req = blerpc_pb2.EchoRequest(message=message)
-        resp_data = await self._call("echo", req.SerializeToString())
-        resp = blerpc_pb2.EchoResponse()
-        resp.ParseFromString(resp_data)
-        return resp.message
-
-    async def flash_read(self, address: int, length: int) -> bytes:
-        """Call the flash_read command."""
-        req = blerpc_pb2.FlashReadRequest(address=address, length=length)
-        resp_data = await self._call("flash_read", req.SerializeToString())
-        resp = blerpc_pb2.FlashReadResponse()
-        resp.ParseFromString(resp_data)
-        return resp.data
-
-    async def data_write(self, data: bytes) -> int:
-        """Call the data_write command. Returns confirmed length."""
-        req = blerpc_pb2.DataWriteRequest(data=data)
-        resp_data = await self._call("data_write", req.SerializeToString())
-        resp = blerpc_pb2.DataWriteResponse()
-        resp.ParseFromString(resp_data)
-        return resp.length
-
     async def disconnect(self):
         """Disconnect from the peripheral."""
         await self._transport.disconnect()
