@@ -1,6 +1,7 @@
 import BlerpcProtocol
 import CoreBluetooth
 import Foundation
+import os.log
 
 enum BlerpcClientError: Error {
     case notConnected
@@ -10,6 +11,8 @@ enum BlerpcClientError: Error {
     case unexpectedResponseType(UInt8)
     case commandNameMismatch(expected: String, got: String)
 }
+
+private let logger = Logger(subsystem: "com.blerpc", category: "BlerpcClient")
 
 final class BlerpcClient: GeneratedClientProtocol {
     let transport = BleTransport()
@@ -35,13 +38,13 @@ final class BlerpcClient: GeneratedClientProtocol {
 
         do {
             try await requestTimeout()
-        } catch {
-            // Peripheral may not support timeout request
+        } catch is BleTransportError {
+            logger.debug("Peripheral did not respond to timeout request, using default")
         }
         do {
             try await requestCapabilities()
-        } catch {
-            // Peripheral may not support capabilities request
+        } catch is BleTransportError {
+            logger.debug("Peripheral did not respond to capabilities request")
         }
     }
 
@@ -57,6 +60,8 @@ final class BlerpcClient: GeneratedClientProtocol {
            resp.payload.count == 2 {
             let ms = Int(resp.payload[0]) | (Int(resp.payload[1]) << 8)
             timeoutMs = ms
+        } else {
+            logger.warning("Unexpected timeout response: type=\(resp.containerType.rawValue), cmd=\(resp.controlCmd.rawValue), payload_len=\(resp.payload.count)")
         }
     }
 
@@ -70,8 +75,15 @@ final class BlerpcClient: GeneratedClientProtocol {
         if resp.containerType == .control,
            resp.controlCmd == .capabilities,
            resp.payload.count == 4 {
-            maxRequestPayloadSize = Int(resp.payload[0]) | (Int(resp.payload[1]) << 8)
-            maxResponsePayloadSize = Int(resp.payload[2]) | (Int(resp.payload[3]) << 8)
+            let maxReq = Int(resp.payload[0]) | (Int(resp.payload[1]) << 8)
+            let maxResp = Int(resp.payload[2]) | (Int(resp.payload[3]) << 8)
+            if maxReq == 0 || maxResp == 0 {
+                logger.warning("Peripheral reported zero capability: max_request=\(maxReq), max_response=\(maxResp)")
+            }
+            maxRequestPayloadSize = maxReq
+            maxResponsePayloadSize = maxResp
+        } else {
+            logger.warning("Unexpected capabilities response: type=\(resp.containerType.rawValue), cmd=\(resp.controlCmd.rawValue), payload_len=\(resp.payload.count)")
         }
     }
 
