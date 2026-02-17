@@ -1,9 +1,11 @@
 package com.blerpc.android.client
 
 import android.content.Context
+import android.util.Log
 import com.blerpc.android.ble.BleTransport
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.protocol.*
+import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -38,13 +40,13 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
         try {
             requestTimeout()
-        } catch (_: Exception) {
-            // Peripheral may not support timeout request
+        } catch (_: TimeoutCancellationException) {
+            Log.d(TAG, "Peripheral did not respond to timeout request, using default")
         }
         try {
             requestCapabilities()
-        } catch (_: Exception) {
-            // Peripheral may not support capabilities request
+        } catch (_: TimeoutCancellationException) {
+            Log.d(TAG, "Peripheral did not respond to capabilities request")
         }
     }
 
@@ -61,6 +63,8 @@ class BlerpcClient(context: Context) : GeneratedClient() {
         ) {
             val ms = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
             timeoutMs = ms.toLong()
+        } else {
+            Log.w(TAG, "Unexpected timeout response: type=${resp.containerType}, cmd=${resp.controlCmd}, payload_len=${resp.payload.size}")
         }
     }
 
@@ -76,8 +80,15 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             resp.payload.size == 4
         ) {
             val buf = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN)
-            maxRequestPayloadSize = buf.short.toInt() and 0xFFFF
-            maxResponsePayloadSize = buf.short.toInt() and 0xFFFF
+            val maxReq = buf.short.toInt() and 0xFFFF
+            val maxResp = buf.short.toInt() and 0xFFFF
+            if (maxReq == 0 || maxResp == 0) {
+                Log.w(TAG, "Peripheral reported zero capability: max_request=$maxReq, max_response=$maxResp")
+            }
+            maxRequestPayloadSize = maxReq
+            maxResponsePayloadSize = maxResp
+        } else {
+            Log.w(TAG, "Unexpected capabilities response: type=${resp.containerType}, cmd=${resp.controlCmd}, payload_len=${resp.payload.size}")
         }
     }
 
@@ -271,5 +282,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
     fun disconnect() {
         transport.disconnect()
+    }
+
+    companion object {
+        private const val TAG = "BlerpcClient"
     }
 }

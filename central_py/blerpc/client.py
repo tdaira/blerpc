@@ -103,6 +103,13 @@ class BlerpcClient(GeneratedClientMixin):
             timeout_ms = int.from_bytes(resp.payload, "little")
             self._timeout_s = timeout_ms / 1000.0
             logger.info("Peripheral timeout: %dms", timeout_ms)
+        else:
+            logger.warning(
+                "Unexpected timeout response: type=%s, cmd=%s, payload_len=%d",
+                resp.container_type,
+                resp.control_cmd,
+                len(resp.payload),
+            )
 
     async def _request_capabilities(self):
         """Request capabilities from peripheral."""
@@ -116,18 +123,35 @@ class BlerpcClient(GeneratedClientMixin):
             and resp.control_cmd == ControlCmd.CAPABILITIES
             and len(resp.payload) == 4
         ):
-            self._max_request_payload_size = int.from_bytes(resp.payload[0:2], "little")
-            self._max_response_payload_size = int.from_bytes(
-                resp.payload[2:4], "little"
-            )
+            max_req = int.from_bytes(resp.payload[0:2], "little")
+            max_resp = int.from_bytes(resp.payload[2:4], "little")
+            if max_req == 0 or max_resp == 0:
+                logger.warning(
+                    "Peripheral reported zero capability:"
+                    " max_request=%d, max_response=%d",
+                    max_req,
+                    max_resp,
+                )
+            self._max_request_payload_size = max_req
+            self._max_response_payload_size = max_resp
             logger.info(
                 "Peripheral capabilities: max_request=%d, max_response=%d",
                 self._max_request_payload_size,
                 self._max_response_payload_size,
             )
+        else:
+            logger.warning(
+                "Unexpected capabilities response: type=%s, cmd=%s, payload_len=%d",
+                resp.container_type,
+                resp.control_cmd,
+                len(resp.payload),
+            )
 
     async def _call(self, cmd_name: str, request_data: bytes) -> bytes:
         """Execute an RPC call and return response data."""
+        if self._splitter is None:
+            raise RuntimeError("Not connected: call connect() first")
+
         # Encode command
         cmd = CommandPacket(
             cmd_type=CommandType.REQUEST,
@@ -187,6 +211,9 @@ class BlerpcClient(GeneratedClientMixin):
         Each yielded bytes object is the protobuf-encoded data portion
         of a single CommandPacket response.
         """
+        if self._splitter is None:
+            raise RuntimeError("Not connected: call connect() first")
+
         # Send initial request (same as _call send path)
         cmd = CommandPacket(
             cmd_type=CommandType.REQUEST,
@@ -245,6 +272,9 @@ class BlerpcClient(GeneratedClientMixin):
         After sending all messages + STREAM_END_C2P, waits for a final response
         with cmd_name=final_cmd_name and returns its data.
         """
+        if self._splitter is None:
+            raise RuntimeError("Not connected: call connect() first")
+
         # Send each message as an independent request
         for msg_data in messages:
             cmd = CommandPacket(

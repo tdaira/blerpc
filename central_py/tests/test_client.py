@@ -430,3 +430,31 @@ async def test_stream_receive_error_during_stream():
             blerpc_pb2.CounterStreamRequest(count=5).SerializeToString(),
         ):
             pass
+
+
+# ── Not-connected tests ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_call_before_connect_raises():
+    """Calling echo before connect() raises RuntimeError."""
+    client = BlerpcClient()
+    with pytest.raises(RuntimeError, match="Not connected"):
+        await client.echo(message="hello")
+
+
+@pytest.mark.asyncio
+async def test_stream_receive_before_connect_raises():
+    """Calling stream_receive before connect() raises RuntimeError."""
+    client = BlerpcClient()
+    with pytest.raises(RuntimeError, match="Not connected"):
+        async for _ in client.stream_receive("counter_stream", b""):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stream_send_before_connect_raises():
+    """Calling stream_send before connect() raises RuntimeError."""
+    client = BlerpcClient()
+    with pytest.raises(RuntimeError, match="Not connected"):
+        await client.stream_send("counter_upload", [], "counter_upload")
