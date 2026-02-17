@@ -5,6 +5,7 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.os.ParcelUuid
+import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -13,7 +14,9 @@ import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-private val SERVICE_UUID = UUID.fromString("12340001-0000-1000-8000-00805f9b34fb")
+private const val TAG = "BleTransport"
+
+val SERVICE_UUID: UUID = UUID.fromString("12340001-0000-1000-8000-00805f9b34fb")
 private val CHAR_UUID = UUID.fromString("12340002-0000-1000-8000-00805f9b34fb")
 private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
@@ -44,15 +47,24 @@ class BleTransport(private val context: Context) {
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            Log.d(TAG, "onConnectionStateChange: status=$status, newState=$newState (0=disconnected, 2=connected)")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    Log.w(TAG, "Connected but status=$status (not GATT_SUCCESS), proceeding with discoverServices")
+                }
                 g.discoverServices()
             } else {
+                Log.w(TAG, "Connection failed or disconnected: status=$status, newState=$newState")
                 connectCont?.invoke(false)
                 connectCont = null
             }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            Log.d(TAG, "onServicesDiscovered: status=$status, services=${g.services.map { it.uuid }}")
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                Log.e(TAG, "Service discovery failed with status=$status")
+            }
             connectCont?.invoke(status == BluetoothGatt.GATT_SUCCESS)
             connectCont = null
         }
@@ -145,22 +157,32 @@ class BleTransport(private val context: Context) {
             null
         }
 
+        Log.d(TAG, "scan: starting with filter=${serviceUuid}, timeout=${timeout}ms")
         scanner.startScan(filters, settings, callback)
         delay(timeout)
         scanner.stopScan(callback)
 
+        Log.d(TAG, "scan: found ${results.size} devices: ${results.values.map { "${it.address}(${it.name},rssi=${it.rssi},uuids=${it.serviceUuids})" }}")
         return results.values.sortedByDescending { it.rssi }
     }
 
     suspend fun connect(device: ScannedDevice) {
+        Log.d(TAG, "connect: address=${device.address}, name=${device.name}, bondState=${device.device.bondState}")
+
         // Connect
         val success = suspendCancellableCoroutine { cont ->
             connectCont = { ok -> cont.resume(ok) }
             gatt = device.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         }
-        if (!success) throw RuntimeException("Failed to connect/discover services")
+        if (!success) {
+            Log.e(TAG, "connect: GATT connection/service discovery failed")
+            gatt?.close()
+            gatt = null
+            throw RuntimeException("Failed to connect/discover services")
+        }
 
         val g = gatt!!
+        Log.d(TAG, "connect: GATT connected, requesting MTU")
 
         // Request MTU
         mtu = suspendCancellableCoroutine { cont ->
@@ -170,10 +192,12 @@ class BleTransport(private val context: Context) {
                 cont.resume(23)
             }
         }
+        Log.d(TAG, "connect: MTU=$mtu")
 
         // Find characteristic
+        Log.d(TAG, "connect: looking for service $SERVICE_UUID among ${g.services.size} services: ${g.services.map { it.uuid }}")
         val service = g.getService(SERVICE_UUID)
-            ?: throw RuntimeException("Service not found")
+            ?: throw RuntimeException("Service not found (discovered ${g.services.size} services: ${g.services.map { it.uuid }})")
         writeChar = service.getCharacteristic(CHAR_UUID)
             ?: throw RuntimeException("Characteristic not found")
 

@@ -3,6 +3,7 @@ package com.blerpc.android.client
 import android.content.Context
 import android.util.Log
 import com.blerpc.android.ble.BleTransport
+import com.blerpc.android.ble.SERVICE_UUID
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.protocol.*
 import kotlinx.coroutines.TimeoutCancellationException
@@ -30,7 +31,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
     val mtu: Int get() = transport.mtu
 
-    suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = null): List<ScannedDevice> {
+    suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = SERVICE_UUID): List<ScannedDevice> {
         return transport.scan(timeout, serviceUuid)
     }
 
