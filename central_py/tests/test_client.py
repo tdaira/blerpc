@@ -458,3 +458,138 @@ async def test_stream_send_before_connect_raises():
     client = BlerpcClient()
     with pytest.raises(RuntimeError, match="Not connected"):
         await client.stream_send("counter_upload", [], "counter_upload")
+
+
+# ── Edge case tests ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_echo_unicode():
+    """Unicode characters in echo message."""
+    transport = MockTransport()
+    client = make_client(transport)
+    msg = "Hello, 世界! 🚀"
+    resp = blerpc_pb2.EchoResponse(message=msg)
+    transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
+    result = await client.echo(message=msg)
+    assert result.message == msg
+
+
+@pytest.mark.asyncio
+async def test_flash_read_zero_length():
+    """Flash read with length=0 returns empty data."""
+    transport = MockTransport()
+    client = make_client(transport)
+    resp = blerpc_pb2.FlashReadResponse(address=0x1000, data=b"")
+    transport.inject_response("flash_read", resp.SerializeToString(), transaction_id=0)
+    result = await client.flash_read(address=0x1000, length=0)
+    assert result.data == b""
+
+
+@pytest.mark.asyncio
+async def test_data_write_large_payload():
+    """DataWrite with large payload split across many containers."""
+    transport = MockTransport(mtu=50)
+    client = make_client(transport)
+    data = bytes(range(256)) * 16  # 4096 bytes
+    resp = blerpc_pb2.DataWriteResponse(length=len(data))
+    transport.inject_response("data_write", resp.SerializeToString(), transaction_id=0)
+    result = await client.data_write(data=data)
+    assert result.length == len(data)
+    assert len(transport._written) > 1
+
+
+@pytest.mark.asyncio
+async def test_data_write_empty():
+    """DataWrite with empty data."""
+    transport = MockTransport()
+    client = make_client(transport)
+    resp = blerpc_pb2.DataWriteResponse(length=0)
+    transport.inject_response("data_write", resp.SerializeToString(), transaction_id=0)
+    result = await client.data_write(data=b"")
+    assert result.length == 0
+
+
+@pytest.mark.asyncio
+async def test_counter_upload_empty():
+    """Counter upload with count=0 sends only STREAM_END_C2P."""
+    transport = MockTransport()
+    client = make_client(transport)
+    resp = blerpc_pb2.CounterUploadResponse(received_count=0)
+    transport.inject_response(
+        "counter_upload", resp.SerializeToString(), transaction_id=50
+    )
+    result = await client.counter_upload(0)
+    assert result == 0
+
+    # Only STREAM_END_C2P should have been sent (no data messages)
+    written_containers = [Container.deserialize(w) for w in transport._written]
+    data_containers = [
+        c for c in written_containers if c.container_type != ContainerType.CONTROL
+    ]
+    assert len(data_containers) == 0
+    stream_ends = [
+        c
+        for c in written_containers
+        if c.container_type == ContainerType.CONTROL
+        and c.control_cmd == ControlCmd.STREAM_END_C2P
+    ]
+    assert len(stream_ends) == 1
+
+
+@pytest.mark.asyncio
+async def test_response_type_mismatch():
+    """Response with cmd_type=REQUEST instead of RESPONSE raises RuntimeError."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    # Inject a packet with cmd_type=REQUEST instead of RESPONSE
+    cmd = CommandPacket(
+        cmd_type=CommandType.REQUEST,
+        cmd_name="echo",
+        data=blerpc_pb2.EchoResponse(message="hello").SerializeToString(),
+    )
+    payload = cmd.serialize()
+    splitter = ContainerSplitter(mtu=transport.mtu)
+    for c in splitter.split(payload, transaction_id=0):
+        transport._notify_queue.put_nowait(c.serialize())
+
+    with pytest.raises(RuntimeError, match="Expected response"):
+        await client.echo(message="hello")
+
+
+@pytest.mark.asyncio
+async def test_multiple_control_containers_before_response():
+    """Multiple control containers before data response are all skipped."""
+    transport = MockTransport()
+    client = make_client(transport)
+
+    # Enqueue several different control containers
+    for cmd in [ControlCmd.TIMEOUT, ControlCmd.CAPABILITIES]:
+        ctrl = Container(
+            transaction_id=0,
+            sequence_number=0,
+            container_type=ContainerType.CONTROL,
+            control_cmd=cmd,
+            payload=b"\x00\x00",
+        )
+        transport._notify_queue.put_nowait(ctrl.serialize())
+
+    resp = blerpc_pb2.EchoResponse(message="after controls")
+    transport.inject_response("echo", resp.SerializeToString(), transaction_id=0)
+
+    result = await client.echo(message="after controls")
+    assert result.message == "after controls"
+
+
+@pytest.mark.asyncio
+async def test_payload_too_large_attributes():
+    """PayloadTooLargeError exposes actual and limit values."""
+    transport = MockTransport()
+    client = make_client(transport)
+    client._max_request_payload_size = 10
+
+    with pytest.raises(PayloadTooLargeError) as exc_info:
+        await client.echo(message="A" * 256)
+    assert exc_info.value.limit == 10
+    assert exc_info.value.actual > 10
