@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
@@ -71,7 +72,7 @@ class BlerpcClient(GeneratedClientMixin):
         """Scan for BLE devices."""
         return await self._transport.scan(timeout=timeout, service_uuid=service_uuid)
 
-    async def connect(self, device: ScannedDevice):
+    async def connect(self, device: ScannedDevice) -> None:
         """Connect to a previously scanned device."""
         await self._transport.connect(device)
         self._splitter = ContainerSplitter(mtu=self._transport.mtu)
@@ -88,7 +89,7 @@ class BlerpcClient(GeneratedClientMixin):
         except asyncio.TimeoutError:
             logger.debug("Peripheral did not respond to capabilities request")
 
-    async def _request_timeout(self):
+    async def _request_timeout(self) -> None:
         """Request timeout value from peripheral."""
         tid = self._splitter.next_transaction_id()
         req = make_timeout_request(transaction_id=tid)
@@ -111,7 +112,7 @@ class BlerpcClient(GeneratedClientMixin):
                 len(resp.payload),
             )
 
-    async def _request_capabilities(self):
+    async def _request_capabilities(self) -> None:
         """Request capabilities from peripheral."""
         tid = self._splitter.next_transaction_id()
         req = make_capabilities_request(transaction_id=tid)
@@ -205,7 +206,9 @@ class BlerpcClient(GeneratedClientMixin):
 
         return resp.data
 
-    async def stream_receive(self, cmd_name: str, request_data: bytes):
+    async def stream_receive(
+        self, cmd_name: str, request_data: bytes
+    ) -> AsyncIterator[bytes]:
         """P->C stream: send request, yield response data until STREAM_END_P2C.
 
         Each yielded bytes object is the protobuf-encoded data portion
@@ -325,7 +328,7 @@ class BlerpcClient(GeneratedClientMixin):
             )
         return resp.data
 
-    async def counter_stream(self, count: int) -> list:
+    async def counter_stream(self, count: int) -> list[tuple[int, int]]:
         """P->C stream: request counter values, return (seq, value) list."""
         req = blerpc_pb2.CounterStreamRequest(count=count)
         results = []
@@ -348,6 +351,6 @@ class BlerpcClient(GeneratedClientMixin):
         resp.ParseFromString(resp_data)
         return resp.received_count
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from the peripheral."""
         await self._transport.disconnect()

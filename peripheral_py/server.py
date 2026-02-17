@@ -42,6 +42,8 @@ CHAR_UUID = "12340002-0000-1000-8000-00805f9b34fb"
 TIMEOUT_MS = 100
 MTU = 247
 MAX_RESPONSE_PAYLOAD_SIZE = 65535
+NOTIFY_MAX_RETRIES = 50
+NOTIFY_RETRY_DELAY_S = 0.005
 
 
 HANDLERS = dict(_GENERATED_HANDLERS)
@@ -283,13 +285,13 @@ class BlerpcPeripheral:
         data = container.serialize()
         char = self.server.get_characteristic(CHAR_UUID)
         char.value = data
-        for attempt in range(50):
+        for attempt in range(NOTIFY_MAX_RETRIES):
             result = self.server.update_value(SERVICE_UUID, CHAR_UUID)
             if result:
                 break
-            time.sleep(0.005)
+            time.sleep(NOTIFY_RETRY_DELAY_S)
         else:
-            logger.error("update_value failed after 50 retries")
+            logger.error("update_value failed after %d retries", NOTIFY_MAX_RETRIES)
 
     async def stop(self):
         if self.server:
