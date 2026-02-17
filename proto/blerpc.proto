@@ -1,33 +1,50 @@
+// blerpc service definitions.
+//
+// These messages define the RPC interface between a BLE Central (client)
+// and Peripheral (server). Each request/response pair maps to a command
+// name used in the blerpc protocol's command layer.
+//
+// On the peripheral (C/Zephyr), fields marked with FT_CALLBACK in
+// blerpc.options use nanopb streaming callbacks to avoid large static
+// buffers. See blerpc.options for per-field size constraints.
+
 syntax = "proto3";
 
 package blerpc;
 
+// Echo — loopback test. Returns the same message string.
 message EchoRequest {
-  string message = 1;
+  string message = 1;  // max 256 bytes (nanopb)
 }
 
 message EchoResponse {
   string message = 1;
 }
 
+// FlashRead — read raw bytes from peripheral flash.
+// The peripheral returns data starting at the given address.
 message FlashReadRequest {
   uint32 address = 1;
-  uint32 length = 2;
+  uint32 length = 2;   // max 8192 bytes per read
 }
 
 message FlashReadResponse {
   uint32 address = 1;
-  bytes data = 2;
+  bytes data = 2;       // FT_CALLBACK on peripheral (streamed encoding)
 }
 
+// DataWrite — write raw bytes to peripheral (sink test).
+// The peripheral acknowledges with the number of bytes received.
 message DataWriteRequest {
-  bytes data = 1;
+  bytes data = 1;       // FT_CALLBACK on peripheral (streamed decoding)
 }
 
 message DataWriteResponse {
   uint32 length = 1;
 }
 
+// CounterStream (P→C stream) — peripheral sends `count` responses,
+// each with an incrementing seq and value = seq * 10.
 message CounterStreamRequest {
   uint32 count = 1;
 }
@@ -37,6 +54,8 @@ message CounterStreamResponse {
   int32 value = 2;
 }
 
+// CounterUpload (C→P stream) — central sends `count` requests,
+// peripheral responds with the total received count.
 message CounterUploadRequest {
   uint32 seq = 1;
   int32 value = 2;

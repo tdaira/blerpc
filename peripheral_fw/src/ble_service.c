@@ -198,8 +198,9 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
         return;
     }
 
-    /* Build command header: type(1) + name_len(1) + name + data_len(2) */
-    uint8_t cmd_hdr[20];
+    /* Build command header: type(1) + name_len(1) + name(max 16) + data_len(2) */
+    #define CMD_HEADER_MAX_SIZE 20
+    uint8_t cmd_hdr[CMD_HEADER_MAX_SIZE];
     if (cmd_hdr_size > sizeof(cmd_hdr)) {
         LOG_ERR("Command name too long for response header: %u", cmd.cmd_name_len);
         return;

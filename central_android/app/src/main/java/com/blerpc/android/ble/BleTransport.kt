@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.channels.Channel
@@ -87,10 +88,9 @@ class BleTransport(private val context: Context) {
             writeComplete = null
         }
 
-        @Deprecated("Deprecated in API 33+", ReplaceWith("onCharacteristicChanged(g, characteristic, value)"))
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            // API 31-32 callback
+            // Required for API < 33; the 3-arg overload is only called on API 33+
             notifyChannel.trySend(characteristic.value)
         }
 
@@ -202,15 +202,20 @@ class BleTransport(private val context: Context) {
             ?: throw RuntimeException("Characteristic not found")
 
         // Enable notifications
-        g.setCharacteristicNotification(writeChar, true)
-        val cccd = writeChar!!.getDescriptor(CCCD_UUID)
+        val wc = writeChar!!
+        g.setCharacteristicNotification(wc, true)
+        val cccd = wc.getDescriptor(CCCD_UUID)
             ?: throw RuntimeException("CCCD not found")
         suspendCancellableCoroutine { cont ->
             descriptorWriteCont = { cont.resume(Unit) }
-            @Suppress("DEPRECATION")
-            cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            @Suppress("DEPRECATION")
-            g.writeDescriptor(cccd)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            } else {
+                @Suppress("DEPRECATION")
+                cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                @Suppress("DEPRECATION")
+                g.writeDescriptor(cccd)
+            }
         }
     }
 
@@ -220,11 +225,18 @@ class BleTransport(private val context: Context) {
 
         suspendCancellableCoroutine { cont ->
             writeComplete = { cont.resume(Unit) }
-            @Suppress("DEPRECATION")
-            c.value = data
-            c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            @Suppress("DEPRECATION")
-            if (!g.writeCharacteristic(c)) {
+            val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                g.writeCharacteristic(
+                    c, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                ) == BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                c.value = data
+                c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                @Suppress("DEPRECATION")
+                g.writeCharacteristic(c)
+            }
+            if (!ok) {
                 writeComplete = null
                 cont.resumeWithException(RuntimeException("Write failed"))
             }
