@@ -602,7 +602,7 @@ int main(void)
 
     ble_central_init(on_response, on_error);
 
-    err = ble_central_connect(CONFIG_BLERPC_TARGET_DEVICE_NAME);
+    err = ble_central_connect();
     if (err) {
         LOG_ERR("Connect failed (err %d)", err);
         return err;
