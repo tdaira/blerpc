@@ -1,5 +1,1 @@
 source "Kconfig.zephyr"
-
-config BLERPC_TARGET_DEVICE_NAME
-	string "Target peripheral device name"
-	default "blerpc"

@@ -48,12 +48,11 @@ void ble_central_set_stream_end_cb(ble_central_stream_end_cb_t cb);
 int ble_central_send_stream_end_c2p(void);
 
 /**
- * Scan for and connect to a device advertising the given name.
- * Blocks until connected and GATT discovery + subscription complete.
- * @param device_name  Name to match in advertisement data
+ * Scan for and connect to a device advertising the blerpc service UUID.
+ * Uses passive scan. Blocks until connected and GATT discovery + subscription complete.
  * @return 0 on success, negative on error
  */
-int ble_central_connect(const char *device_name);
+int ble_central_connect(void);
 
 /**
  * Send data to the peripheral (write without response).
