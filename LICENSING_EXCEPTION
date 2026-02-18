@@ -1,0 +1,26 @@
+Static Linking Exception to the GNU Lesser General Public License v3
+
+Copyright (C) 2025 tdaira
+
+As a special exception, the copyright holders of this library give you
+permission to convey a Combined Work that includes or links (statically
+or dynamically) against this library without being required to provide
+the Corresponding Application Code, the Minimal Corresponding Source,
+or the Installation Information as specified in sections 4(d) and 4(e)
+of the GNU Lesser General Public License v3.
+
+When distributing a Combined Work under this exception you must still:
+
+  1. Give prominent notice that this library is used in the Combined
+     Work and that the library is covered by the LGPL v3.
+
+  2. Accompany the Combined Work with a copy of the GNU GPL v3 and
+     the LGPL v3 license documents (i.e. the LICENSE file from this
+     repository).
+
+  3. Distribute any modifications you make to this library itself
+     under the terms of the LGPL v3 (with or without this exception).
+
+If you modify this library, you may extend this exception to your
+version of the library, but you are not obliged to do so.  If you do
+not wish to do so, delete this exception statement from your version.

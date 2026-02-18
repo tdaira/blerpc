@@ -1,7 +1,7 @@
 # bleRPC
 
 [![CI](https://github.com/tdaira/blerpc/actions/workflows/ci.yml/badge.svg)](https://github.com/tdaira/blerpc/actions/workflows/ci.yml)
-[![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
+[![License: LGPL-3.0 with exception](https://img.shields.io/badge/License-LGPL--3.0--with--exception-blue.svg)](LICENSE)
 
 Type-safe, high-performance RPC over Bluetooth Low Energy using Protocol Buffers.
 
@@ -67,4 +67,4 @@ The documentation site source is at [tdaira/tdaira.github.io](https://github.com
 
 ## License
 
-[LGPL-3.0](LICENSE)
+[LGPL-3.0](LICENSE) with [Static Linking Exception](LICENSING_EXCEPTION)

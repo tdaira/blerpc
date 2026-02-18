@@ -79,4 +79,4 @@ Use [GitHub Issues](https://github.com/tdaira/blerpc/issues) to report bugs or r
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [LGPL-3.0](LICENSE).
+By contributing, you agree that your contributions will be licensed under the [LGPL-3.0](LICENSE) with [Static Linking Exception](LICENSING_EXCEPTION).
