@@ -117,7 +117,9 @@ class BlerpcPeripheral:
             x25519_priv_bytes = bytes.fromhex(x25519_private_key_hex)
             ed25519_priv_bytes = bytes.fromhex(ed25519_private_key_hex)
             x25519_privkey = BlerpcCrypto.x25519_private_from_bytes(x25519_priv_bytes)
-            ed25519_privkey = BlerpcCrypto.ed25519_private_from_bytes(ed25519_priv_bytes)
+            ed25519_privkey = BlerpcCrypto.ed25519_private_from_bytes(
+                ed25519_priv_bytes
+            )
             self._kx = PeripheralKeyExchange(x25519_privkey, ed25519_privkey)
             self._encryption_supported = True
             logger.info("Encryption keys loaded")

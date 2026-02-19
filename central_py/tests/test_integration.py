@@ -112,7 +112,8 @@ async def test_flash_read_throughput(client):
     per_call = elapsed / num_reads
     print(
         f"\n[BENCH] flash_read_throughput: {kb_per_sec:.1f} KB/s "
-        f"({total_bytes} bytes in {elapsed * 1000:.0f} ms, {per_call * 1000:.1f} ms/call)"
+        f"({total_bytes}B in {elapsed * 1000:.0f}ms, "
+        f"{per_call * 1000:.1f}ms/call)"
     )
 
 
@@ -191,7 +192,8 @@ async def test_data_write_throughput(client):
     per_call = elapsed / num_writes
     print(
         f"\n[BENCH] data_write_throughput: {kb_per_sec:.1f} KB/s "
-        f"({total_bytes} bytes in {elapsed * 1000:.0f} ms, {per_call * 1000:.1f} ms/call)"
+        f"({total_bytes}B in {elapsed * 1000:.0f}ms, "
+        f"{per_call * 1000:.1f}ms/call)"
     )
 
 

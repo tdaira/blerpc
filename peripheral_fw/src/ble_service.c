@@ -292,24 +292,25 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
 
         /* Encode protobuf into the buffer after the command header */
         pb_ostream_t ostream = pb_ostream_from_buffer(cmd_plain_buf + cmd_hdr_size,
-                                                       sizeof(cmd_plain_buf) - cmd_hdr_size);
+                                                      sizeof(cmd_plain_buf) - cmd_hdr_size);
         if (handler(cmd.data, cmd.data_len, &ostream) != 0) {
             LOG_ERR("Handler encode pass failed");
             return;
         }
 
         /* Encrypt the full command payload */
-        static uint8_t encrypted_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
+        static uint8_t
+            encrypted_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
         size_t encrypted_len;
         if (blerpc_crypto_session_encrypt(&crypto_session, encrypted_buf, &encrypted_len,
-                                           cmd_plain_buf, total_length) != 0) {
+                                          cmd_plain_buf, total_length) != 0) {
             LOG_ERR("Response encryption failed");
             return;
         }
 
         /* Send encrypted payload via container splitter */
-        int rc = container_split_and_send(transaction_id, encrypted_buf, encrypted_len,
-                                           mtu, container_send_cb, NULL);
+        int rc = container_split_and_send(transaction_id, encrypted_buf, encrypted_len, mtu,
+                                          container_send_cb, NULL);
         if (rc < 0) {
             LOG_ERR("Encrypted container send failed: %d", rc);
         }
@@ -430,8 +431,8 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             if (step == BLERPC_KEY_EXCHANGE_STEP1 && hdr.payload_len >= BLERPC_STEP1_SIZE) {
                 /* Process step 1 and produce step 2 */
                 uint8_t step2_payload[BLERPC_STEP2_SIZE];
-                if (blerpc_peripheral_kx_process_step1(&peripheral_kx, hdr.payload,
-                                                        hdr.payload_len, step2_payload) != 0) {
+                if (blerpc_peripheral_kx_process_step1(&peripheral_kx, hdr.payload, hdr.payload_len,
+                                                       step2_payload) != 0) {
                     LOG_ERR("Key exchange step 1 processing failed");
                     return len;
                 }
@@ -454,9 +455,8 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             } else if (step == BLERPC_KEY_EXCHANGE_STEP3 && hdr.payload_len >= BLERPC_STEP3_SIZE) {
                 /* Process step 3 and produce step 4 + session */
                 uint8_t step4_payload[BLERPC_STEP4_SIZE];
-                if (blerpc_peripheral_kx_process_step3(&peripheral_kx, hdr.payload,
-                                                        hdr.payload_len, step4_payload,
-                                                        &crypto_session) != 0) {
+                if (blerpc_peripheral_kx_process_step3(&peripheral_kx, hdr.payload, hdr.payload_len,
+                                                       step4_payload, &crypto_session) != 0) {
                     LOG_ERR("Key exchange step 3 processing failed");
                     return len;
                 }
@@ -494,7 +494,7 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
             size_t decrypted_len;
             if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
-                                               assembler.buf, assembler.total_length) != 0) {
+                                              assembler.buf, assembler.total_length) != 0) {
                 LOG_ERR("Decryption failed");
                 container_assembler_init(&assembler);
                 return len;
@@ -645,25 +645,26 @@ void ble_service_submit_work(struct k_work *work)
     k_work_submit_to_queue(&blerpc_work_q, work);
 }
 
-int ble_service_send_command_response(uint8_t transaction_id,
-                                      const uint8_t *cmd_data, size_t cmd_len)
+int ble_service_send_command_response(uint8_t transaction_id, const uint8_t *cmd_data,
+                                      size_t cmd_len)
 {
     uint16_t mtu = ble_service_get_mtu();
 
 #ifdef CONFIG_BLERPC_ENCRYPTION
     if (encryption_active) {
-        static uint8_t enc_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
+        static uint8_t
+            enc_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
         size_t enc_len;
-        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, &enc_len,
-                                           cmd_data, cmd_len) != 0) {
+        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, &enc_len, cmd_data, cmd_len) !=
+            0) {
             LOG_ERR("Stream response encryption failed");
             return -1;
         }
-        return container_split_and_send(transaction_id, enc_buf, enc_len,
-                                         mtu, container_send_cb, NULL);
+        return container_split_and_send(transaction_id, enc_buf, enc_len, mtu, container_send_cb,
+                                        NULL);
     }
 #endif
 
-    return container_split_and_send(transaction_id, cmd_data, cmd_len,
-                                     mtu, container_send_cb, NULL);
+    return container_split_and_send(transaction_id, cmd_data, cmd_len, mtu, container_send_cb,
+                                    NULL);
 }

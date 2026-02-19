@@ -75,8 +75,8 @@ void ble_service_submit_work(struct k_work *work);
  * @param cmd_len        Length of command payload
  * @return 0 on success, negative on error
  */
-int ble_service_send_command_response(uint8_t transaction_id,
-                                      const uint8_t *cmd_data, size_t cmd_len);
+int ble_service_send_command_response(uint8_t transaction_id, const uint8_t *cmd_data,
+                                      size_t cmd_len);
 
 #ifdef __cplusplus
 }

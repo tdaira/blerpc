@@ -144,7 +144,8 @@ class BlerpcClient(GeneratedClientMixin):
             self._max_request_payload_size = max_req
             self._max_response_payload_size = max_resp
             logger.info(
-                "Peripheral capabilities: max_request=%d, max_response=%d, flags=0x%04x",
+                "Peripheral capabilities: max_request=%d, "
+                "max_response=%d, flags=0x%04x",
                 self._max_request_payload_size,
                 self._max_response_payload_size,
                 flags,

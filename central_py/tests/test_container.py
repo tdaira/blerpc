@@ -370,7 +370,8 @@ class TestControlContainers:
         c = make_capabilities_request(transaction_id=7)
         assert c.container_type == ContainerType.CONTROL
         assert c.control_cmd == ControlCmd.CAPABILITIES
-        assert c.payload == b""
+        assert len(c.payload) == 6
+        assert struct.unpack("<HHH", c.payload) == (0, 0, 0)
 
     def test_capabilities_response(self):
         c = make_capabilities_response(
@@ -380,8 +381,18 @@ class TestControlContainers:
         )
         assert c.container_type == ContainerType.CONTROL
         assert c.control_cmd == ControlCmd.CAPABILITIES
-        assert len(c.payload) == 4
-        assert struct.unpack("<HH", c.payload) == (256, 65535)
+        assert len(c.payload) == 6
+        assert struct.unpack("<HHH", c.payload) == (256, 65535, 0)
+
+    def test_capabilities_response_with_flags(self):
+        c = make_capabilities_response(
+            transaction_id=7,
+            max_request_payload_size=256,
+            max_response_payload_size=65535,
+            flags=0x0001,
+        )
+        assert len(c.payload) == 6
+        assert struct.unpack("<HHH", c.payload) == (256, 65535, 1)
 
     def test_error_response(self):
         c = make_error_response(

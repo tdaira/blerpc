@@ -93,8 +93,8 @@ static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_l
 
     /* Encrypt if encryption is active */
     size_t send_len;
-    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
-                                     encrypt_buf, sizeof(encrypt_buf), &send_len) != 0) {
+    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
+                                    sizeof(encrypt_buf), &send_len) != 0) {
         LOG_ERR("Payload encryption failed");
         return -1;
     }
@@ -366,8 +366,7 @@ static int test_data_write(uint32_t length)
     static uint8_t dw_resp_buf[blerpc_DataWriteResponse_size];
     size_t resp_len;
     if (rpc_call("data_write", shared_work_buf, ostream.bytes_written, dw_resp_buf,
-                 sizeof(dw_resp_buf),
-                 &resp_len) != 0) {
+                 sizeof(dw_resp_buf), &resp_len) != 0) {
         LOG_ERR("DataWrite RPC failed");
         return -1;
     }
@@ -452,9 +451,9 @@ static int test_counter_stream(void)
     }
 
     /* Send request (use rpc_call's sending part manually) */
-    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14, req_buf,
-                                    (uint16_t)ostream.bytes_written, shared_cmd_buf,
-                                    sizeof(shared_cmd_buf));
+    int cmd_len =
+        command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14, req_buf,
+                          (uint16_t)ostream.bytes_written, shared_cmd_buf, sizeof(shared_cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return -1;
@@ -462,17 +461,15 @@ static int test_counter_stream(void)
 
     /* Encrypt if encryption is active */
     size_t cs_send_len;
-    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
-                                     encrypt_buf, sizeof(encrypt_buf),
-                                     &cs_send_len) != 0) {
+    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
+                                    sizeof(encrypt_buf), &cs_send_len) != 0) {
         LOG_ERR("CounterStream payload encryption failed");
         return -1;
     }
 
     uint8_t tid = next_transaction_id();
     uint16_t mtu = ble_central_get_mtu();
-    int rc = container_split_and_send(tid, encrypt_buf, cs_send_len, mtu,
-                                       send_container, NULL);
+    int rc = container_split_and_send(tid, encrypt_buf, cs_send_len, mtu, send_container, NULL);
     if (rc < 0) {
         LOG_ERR("Container split/send failed: %d", rc);
         return -1;
@@ -562,17 +559,15 @@ static int test_counter_upload(void)
 
         /* Encrypt if encryption is active */
         size_t cu_send_len;
-        if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
-                                         encrypt_buf, sizeof(encrypt_buf),
-                                         &cu_send_len) != 0) {
+        if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
+                                        sizeof(encrypt_buf), &cu_send_len) != 0) {
             LOG_ERR("CounterUpload payload encryption failed at %u", i);
             return -1;
         }
 
         uint8_t tid = next_transaction_id();
         uint16_t mtu = ble_central_get_mtu();
-        int rc = container_split_and_send(tid, encrypt_buf, cu_send_len, mtu,
-                                           send_container, NULL);
+        int rc = container_split_and_send(tid, encrypt_buf, cu_send_len, mtu, send_container, NULL);
         if (rc < 0) {
             LOG_ERR("Container split/send failed at %u: %d", i, rc);
             return -1;

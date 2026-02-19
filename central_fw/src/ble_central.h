@@ -109,8 +109,8 @@ bool ble_central_is_encrypted(void);
  * If encryption is not active, copies plaintext to out unchanged.
  * @return 0 on success, negative on error
  */
-int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len,
-                                 uint8_t *out, size_t out_size, size_t *out_len);
+int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len, uint8_t *out,
+                                size_t out_size, size_t *out_len);
 
 #ifdef __cplusplus
 }

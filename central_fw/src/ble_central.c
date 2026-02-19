@@ -280,8 +280,7 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
             max_response_payload_size = (uint16_t)(hdr.payload[2] | (hdr.payload[3] << 8));
             capability_flags = 0;
             if (hdr.payload_len >= 6) {
-                capability_flags = (uint16_t)hdr.payload[4] |
-                                   ((uint16_t)hdr.payload[5] << 8);
+                capability_flags = (uint16_t)hdr.payload[4] | ((uint16_t)hdr.payload[5] << 8);
             }
             k_sem_give(&caps_sem);
         } else if (hdr.control_cmd == CONTROL_CMD_ERROR && hdr.payload_len >= 1) {
@@ -309,7 +308,7 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
             static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
             size_t decrypted_len;
             if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
-                                               assembler.buf, assembler.total_length) != 0) {
+                                              assembler.buf, assembler.total_length) != 0) {
                 LOG_ERR("Response decryption failed");
                 container_assembler_init(&assembler);
                 return BT_GATT_ITER_CONTINUE;
@@ -464,13 +463,13 @@ int ble_central_write(const uint8_t *data, size_t len)
     return bt_gatt_write_without_response(current_conn, char_value_handle, data, len, false);
 }
 
-int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len,
-                                 uint8_t *out, size_t out_size, size_t *out_len)
+int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len, uint8_t *out,
+                                size_t out_size, size_t *out_len)
 {
 #ifdef CONFIG_BLERPC_ENCRYPTION
     if (encryption_active) {
-        return blerpc_crypto_session_encrypt(&crypto_session, out, out_len,
-                                              plaintext, plaintext_len);
+        return blerpc_crypto_session_encrypt(&crypto_session, out, out_len, plaintext,
+                                             plaintext_len);
     }
 #endif
     if (plaintext_len > out_size) {
@@ -597,8 +596,7 @@ int ble_central_perform_key_exchange(void)
     /* Process step 2 and produce step 3 */
     uint8_t step3_payload[BLERPC_STEP3_SIZE];
     int kx_rc = blerpc_central_kx_process_step2(&central_kx, step2_hdr.payload,
-                                                step2_hdr.payload_len,
-                                                step3_payload, NULL);
+                                                step2_hdr.payload_len, step3_payload, NULL);
     if (kx_rc != 0) {
         LOG_ERR("Key exchange step 2 processing failed: %d", kx_rc);
         return -EACCES;
@@ -645,7 +643,7 @@ int ble_central_perform_key_exchange(void)
 
     /* Finish key exchange: verify confirmation and produce session */
     kx_rc = blerpc_central_kx_finish(&central_kx, step4_hdr.payload, step4_hdr.payload_len,
-                                      &crypto_session);
+                                     &crypto_session);
     if (kx_rc != 0) {
         LOG_ERR("Key exchange finish failed: %d", kx_rc);
         return -EACCES;

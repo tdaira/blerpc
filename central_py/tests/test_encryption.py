@@ -1,4 +1,6 @@
-"""Integration tests for E2E encryption: Central client ↔ simulated encrypted Peripheral.
+"""E2E encryption integration tests.
+
+Central client ↔ simulated encrypted Peripheral.
 
 Tests the full protocol flow without BLE hardware:
 - CAPABILITIES negotiation with encryption flag
