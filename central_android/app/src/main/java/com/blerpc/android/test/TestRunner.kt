@@ -47,7 +47,7 @@ class TestRunner(private val context: Context) {
             }
             log("Connecting to ${target.name ?: target.address}...")
             client.connect(target)
-            log("Connected. MTU=${client.mtu}")
+            log("Connected. MTU=${client.mtu}, encrypted=${client.isEncrypted}")
 
             for (iter in 1..iterations) {
                 if (iterations > 1) {

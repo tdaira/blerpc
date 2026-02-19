@@ -214,41 +214,22 @@ class BlerpcPeripheral:
             logger.warning("KEY_EXCHANGE received but encryption not supported")
             return
 
-        payload = container.payload
-        if len(payload) < 1:
+        try:
+            response, session = self._kx.handle_step(container.payload)
+        except ValueError as e:
+            logger.error("Key exchange failed: %s", e)
             return
 
-        step = payload[0]
+        resp = Container(
+            transaction_id=container.transaction_id,
+            sequence_number=0,
+            container_type=ContainerType.CONTROL,
+            control_cmd=ControlCmd.KEY_EXCHANGE,
+            payload=response,
+        )
+        self._send_container_sync(resp)
 
-        if step == 0x01:
-            # Step 1→2: Parse central pubkey, sign, derive key, send step 2
-            step2 = self._kx.process_step1(payload)
-            resp = Container(
-                transaction_id=container.transaction_id,
-                sequence_number=0,
-                container_type=ContainerType.CONTROL,
-                control_cmd=ControlCmd.KEY_EXCHANGE,
-                payload=step2,
-            )
-            self._send_container_sync(resp)
-            logger.info("KEY_EXCHANGE step 1→2 complete")
-
-        elif step == 0x03:
-            # Step 3→4: Verify confirmation, send step 4, establish session
-            try:
-                step4, session = self._kx.process_step3(payload)
-            except ValueError as e:
-                logger.error("Step 3 failed: %s: %s", type(e).__name__, e)
-                return
-
-            resp = Container(
-                transaction_id=container.transaction_id,
-                sequence_number=0,
-                container_type=ContainerType.CONTROL,
-                control_cmd=ControlCmd.KEY_EXCHANGE,
-                payload=step4,
-            )
-            self._send_container_sync(resp)
+        if session is not None:
             self._session = session
             logger.info("E2E encryption established")
 

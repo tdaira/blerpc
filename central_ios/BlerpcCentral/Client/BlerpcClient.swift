@@ -28,6 +28,7 @@ final class BlerpcClient: GeneratedClientProtocol {
     private var session: BlerpcCryptoSession?
 
     var mtu: Int { transport.mtu }
+    var isEncrypted: Bool { session != nil }
 
     func scan(
         timeout: TimeInterval = 5,
@@ -100,40 +101,23 @@ final class BlerpcClient: GeneratedClientProtocol {
 
     private func performKeyExchange() async throws {
         guard let s = splitter else { throw BlerpcClientError.notConnected }
-        let kx = CentralKeyExchange()
 
-        // Step 1: Send central's ephemeral public key
-        let step1 = kx.start()
-        let tid1 = s.nextTransactionId()
-        let step1Req = makeKeyExchange(transactionId: tid1, payload: step1)
-        try transport.write(step1Req.serialize())
-
-        // Step 2: Receive peripheral's response
-        let step2Data = try await transport.readNotify(timeoutMs: 2000)
-        let step2Resp = try Container.deserialize(step2Data)
-        guard step2Resp.containerType == .control,
-              step2Resp.controlCmd == .keyExchange else {
-            logger.error("Expected KEY_EXCHANGE step 2, got something else")
-            throw BlerpcClientError.keyExchangeFailed("Unexpected response for step 2")
-        }
-
-        let step3 = try kx.processStep2(step2Resp.payload)
-
-        // Step 3: Send encrypted confirmation
-        let tid3 = s.nextTransactionId()
-        let step3Req = makeKeyExchange(transactionId: tid3, payload: step3)
-        try transport.write(step3Req.serialize())
-
-        // Step 4: Receive peripheral's confirmation
-        let step4Data = try await transport.readNotify(timeoutMs: 2000)
-        let step4Resp = try Container.deserialize(step4Data)
-        guard step4Resp.containerType == .control,
-              step4Resp.controlCmd == .keyExchange else {
-            logger.error("Expected KEY_EXCHANGE step 4, got something else")
-            throw BlerpcClientError.keyExchangeFailed("Unexpected response for step 4")
-        }
-
-        session = try kx.finish(step4Resp.payload)
+        session = try await BlerpcCrypto.centralPerformKeyExchange(
+            send: { payload in
+                let tid = s.nextTransactionId()
+                let req = makeKeyExchange(transactionId: tid, payload: payload)
+                try self.transport.write(req.serialize())
+            },
+            receive: {
+                let data = try await self.transport.readNotify(timeoutMs: 2000)
+                let resp = try Container.deserialize(data)
+                guard resp.containerType == .control,
+                      resp.controlCmd == .keyExchange else {
+                    throw BlerpcClientError.keyExchangeFailed("Expected KEY_EXCHANGE response")
+                }
+                return resp.payload
+            }
+        )
         logger.info("E2E encryption established")
     }
 
