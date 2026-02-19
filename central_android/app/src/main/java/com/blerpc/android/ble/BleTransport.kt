@@ -5,7 +5,6 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.os.Build
-import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -147,23 +146,24 @@ class BleTransport(private val context: Context) {
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        val filters = if (serviceUuid != null) {
-            listOf(
-                ScanFilter.Builder()
-                    .setServiceUuid(ParcelUuid(serviceUuid))
-                    .build()
-            )
-        } else {
-            null
-        }
-
-        Log.d(TAG, "scan: starting with filter=${serviceUuid}, timeout=${timeout}ms")
-        scanner.startScan(filters, settings, callback)
+        // Use unfiltered scan and filter manually — Android's ScanFilter
+        // does not reliably match 128-bit service UUIDs on all devices.
+        Log.d(TAG, "scan: starting (unfiltered, manual filter=${serviceUuid}), timeout=${timeout}ms")
+        scanner.startScan(null, settings, callback)
         delay(timeout)
         scanner.stopScan(callback)
 
-        Log.d(TAG, "scan: found ${results.size} devices: ${results.values.map { "${it.address}(${it.name},rssi=${it.rssi},uuids=${it.serviceUuids})" }}")
-        return results.values.sortedByDescending { it.rssi }
+        val filtered = if (serviceUuid != null) {
+            val target = serviceUuid.toString()
+            results.values.filter { device ->
+                device.serviceUuids.any { it.equals(target, ignoreCase = true) }
+            }
+        } else {
+            results.values.toList()
+        }
+
+        Log.d(TAG, "scan: found ${filtered.size}/${results.size} devices: ${filtered.map { "${it.address}(${it.name},rssi=${it.rssi})" }}")
+        return filtered.sortedByDescending { it.rssi }
     }
 
     suspend fun connect(device: ScannedDevice) {

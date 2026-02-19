@@ -1,2 +1,4 @@
 bless>=0.2.5
 protobuf>=5.0
+cryptography>=41.0
+blerpc-protocol @ git+https://github.com/tdaira/blerpc-protocol.git@v0.2.0

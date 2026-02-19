@@ -10,6 +10,9 @@ enum BlerpcClientError: Error {
     case peripheralError(code: UInt8)
     case unexpectedResponseType(UInt8)
     case commandNameMismatch(expected: String, got: String)
+    case keyExchangeFailed(String)
+    case encryptionError(String)
+    case replayDetected(counter: UInt32)
 }
 
 private let logger = Logger(subsystem: "com.blerpc", category: "BlerpcClient")
@@ -21,6 +24,8 @@ final class BlerpcClient: GeneratedClientProtocol {
     private var timeoutMs: Int = 100
     private var maxRequestPayloadSize: Int?
     private var maxResponsePayloadSize: Int?
+
+    private var session: BlerpcCryptoSession?
 
     var mtu: Int { transport.mtu }
 
@@ -74,17 +79,72 @@ final class BlerpcClient: GeneratedClientProtocol {
         let resp = try Container.deserialize(data)
         if resp.containerType == .control,
            resp.controlCmd == .capabilities,
-           resp.payload.count == 4 {
+           resp.payload.count >= 6 {
             let maxReq = Int(resp.payload[0]) | (Int(resp.payload[1]) << 8)
             let maxResp = Int(resp.payload[2]) | (Int(resp.payload[3]) << 8)
+            let flags = Int(resp.payload[4]) | (Int(resp.payload[5]) << 8)
             if maxReq == 0 || maxResp == 0 {
                 logger.warning("Peripheral reported zero capability: max_request=\(maxReq), max_response=\(maxResp)")
             }
             maxRequestPayloadSize = maxReq
             maxResponsePayloadSize = maxResp
+            logger.info("Peripheral capabilities: max_request=\(maxReq), max_response=\(maxResp), flags=0x\(String(flags, radix: 16, uppercase: false))")
+
+            if flags & Int(capabilityFlagEncryptionSupported) != 0 {
+                try await performKeyExchange()
+            }
         } else {
             logger.warning("Unexpected capabilities response: type=\(resp.containerType.rawValue), cmd=\(resp.controlCmd.rawValue), payload_len=\(resp.payload.count)")
         }
+    }
+
+    private func performKeyExchange() async throws {
+        guard let s = splitter else { throw BlerpcClientError.notConnected }
+        let kx = CentralKeyExchange()
+
+        // Step 1: Send central's ephemeral public key
+        let step1 = kx.start()
+        let tid1 = s.nextTransactionId()
+        let step1Req = makeKeyExchange(transactionId: tid1, payload: step1)
+        try transport.write(step1Req.serialize())
+
+        // Step 2: Receive peripheral's response
+        let step2Data = try await transport.readNotify(timeoutMs: 2000)
+        let step2Resp = try Container.deserialize(step2Data)
+        guard step2Resp.containerType == .control,
+              step2Resp.controlCmd == .keyExchange else {
+            logger.error("Expected KEY_EXCHANGE step 2, got something else")
+            throw BlerpcClientError.keyExchangeFailed("Unexpected response for step 2")
+        }
+
+        let step3 = try kx.processStep2(step2Resp.payload)
+
+        // Step 3: Send encrypted confirmation
+        let tid3 = s.nextTransactionId()
+        let step3Req = makeKeyExchange(transactionId: tid3, payload: step3)
+        try transport.write(step3Req.serialize())
+
+        // Step 4: Receive peripheral's confirmation
+        let step4Data = try await transport.readNotify(timeoutMs: 2000)
+        let step4Resp = try Container.deserialize(step4Data)
+        guard step4Resp.containerType == .control,
+              step4Resp.controlCmd == .keyExchange else {
+            logger.error("Expected KEY_EXCHANGE step 4, got something else")
+            throw BlerpcClientError.keyExchangeFailed("Unexpected response for step 4")
+        }
+
+        session = try kx.finish(step4Resp.payload)
+        logger.info("E2E encryption established")
+    }
+
+    private func encryptPayload(_ payload: Data) throws -> Data {
+        guard let s = session else { return payload }
+        return try s.encrypt(payload)
+    }
+
+    private func decryptPayload(_ payload: Data) throws -> Data {
+        guard let s = session else { return payload }
+        return try s.decrypt(payload)
     }
 
     func call(cmdName: String, requestData: Data) async throws -> Data {
@@ -97,7 +157,8 @@ final class BlerpcClient: GeneratedClientProtocol {
             throw BlerpcClientError.payloadTooLarge(actual: payload.count, limit: limit)
         }
 
-        let containers = try s.split(payload)
+        let sendPayload = try encryptPayload(payload)
+        let containers = try s.split(sendPayload)
         for c in containers {
             try transport.write(c.serialize())
         }
@@ -122,7 +183,8 @@ final class BlerpcClient: GeneratedClientProtocol {
             }
 
             if let result = assembler.feed(container) {
-                let resp = try CommandPacket.deserialize(result)
+                let decrypted = try decryptPayload(result)
+                let resp = try CommandPacket.deserialize(decrypted)
                 guard resp.cmdType == .response else {
                     throw BlerpcClientError.unexpectedResponseType(resp.cmdType.rawValue)
                 }
@@ -146,7 +208,8 @@ final class BlerpcClient: GeneratedClientProtocol {
             throw BlerpcClientError.payloadTooLarge(actual: payload.count, limit: limit)
         }
 
-        let containers = try s.split(payload)
+        let sendPayload = try encryptPayload(payload)
+        let containers = try s.split(sendPayload)
         for c in containers {
             try transport.write(c.serialize())
         }
@@ -175,7 +238,8 @@ final class BlerpcClient: GeneratedClientProtocol {
             }
 
             if let result = assembler.feed(container) {
-                let resp = try CommandPacket.deserialize(result)
+                let decrypted = try decryptPayload(result)
+                let resp = try CommandPacket.deserialize(decrypted)
                 guard resp.cmdType == .response else {
                     throw BlerpcClientError.unexpectedResponseType(resp.cmdType.rawValue)
                 }
@@ -195,7 +259,8 @@ final class BlerpcClient: GeneratedClientProtocol {
         for msgData in messages {
             let cmd = CommandPacket(cmdType: .request, cmdName: cmdName, data: msgData)
             let payload = try cmd.serialize()
-            let containers = try s.split(payload)
+            let sendPayload = try encryptPayload(payload)
+            let containers = try s.split(sendPayload)
             for c in containers {
                 try transport.write(c.serialize())
             }
@@ -227,7 +292,8 @@ final class BlerpcClient: GeneratedClientProtocol {
             }
 
             if let result = assembler.feed(container) {
-                let resp = try CommandPacket.deserialize(result)
+                let decrypted = try decryptPayload(result)
+                let resp = try CommandPacket.deserialize(decrypted)
                 guard resp.cmdType == .response else {
                     throw BlerpcClientError.unexpectedResponseType(resp.cmdType.rawValue)
                 }

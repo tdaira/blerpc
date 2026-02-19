@@ -1,6 +1,11 @@
 #include "ble_central.h"
 #include <blerpc_protocol/container.h>
 
+#ifdef CONFIG_BLERPC_ENCRYPTION
+#include <blerpc_protocol/crypto.h>
+#include <psa/crypto.h>
+#endif
+
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -33,7 +38,18 @@ static ble_central_stream_end_cb_t stream_end_cb;
 /* Capabilities */
 static uint16_t max_request_payload_size;
 static uint16_t max_response_payload_size;
+static uint16_t capability_flags;
 static K_SEM_DEFINE(caps_sem, 0, 1);
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+/* Encryption state */
+static struct blerpc_crypto_session crypto_session;
+static bool encryption_active;
+static struct blerpc_central_key_exchange central_kx;
+static K_SEM_DEFINE(kx_sem, 0, 1);
+static uint8_t kx_response_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+static size_t kx_response_len;
+#endif
 
 /* Synchronization semaphores */
 static K_SEM_DEFINE(connect_sem, 0, 1);
@@ -45,8 +61,9 @@ static K_SEM_DEFINE(mtu_sem, 0, 1);
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                          struct net_buf_simple *ad)
 {
-    /* Only look at connectable advertisements */
-    if (type != BT_GAP_ADV_TYPE_ADV_IND && type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
+    /* Only look at connectable advertisements and scan responses */
+    if (type != BT_GAP_ADV_TYPE_ADV_IND && type != BT_GAP_ADV_TYPE_ADV_DIRECT_IND &&
+        type != BT_GAP_ADV_TYPE_SCAN_RSP) {
         return;
     }
 
@@ -258,14 +275,27 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
             if (stream_end_cb) {
                 stream_end_cb();
             }
-        } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES && hdr.payload_len == 4) {
+        } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES && hdr.payload_len >= 4) {
             max_request_payload_size = (uint16_t)(hdr.payload[0] | (hdr.payload[1] << 8));
             max_response_payload_size = (uint16_t)(hdr.payload[2] | (hdr.payload[3] << 8));
+            capability_flags = 0;
+            if (hdr.payload_len >= 6) {
+                capability_flags = (uint16_t)hdr.payload[4] | ((uint16_t)hdr.payload[5] << 8);
+            }
             k_sem_give(&caps_sem);
         } else if (hdr.control_cmd == CONTROL_CMD_ERROR && hdr.payload_len >= 1) {
             if (error_cb) {
                 error_cb(hdr.payload[0]);
             }
+#ifdef CONFIG_BLERPC_ENCRYPTION
+        } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
+            /* Store raw notification for key exchange processing */
+            if (length <= sizeof(kx_response_buf)) {
+                memcpy(kx_response_buf, data, length);
+                kx_response_len = length;
+                k_sem_give(&kx_sem);
+            }
+#endif
         }
         return BT_GATT_ITER_CONTINUE;
     }
@@ -273,9 +303,27 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
     int rc = container_assembler_feed(&assembler, &hdr);
     if (rc == 1) {
         /* Assembly complete */
-        if (response_cb) {
-            response_cb(assembler.buf, assembler.total_length);
+#ifdef CONFIG_BLERPC_ENCRYPTION
+        if (encryption_active) {
+            static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+            size_t decrypted_len;
+            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
+                                              assembler.buf, assembler.total_length) != 0) {
+                LOG_ERR("Response decryption failed");
+                container_assembler_init(&assembler);
+                return BT_GATT_ITER_CONTINUE;
+            }
+            if (response_cb) {
+                response_cb(decrypted, decrypted_len);
+            }
+        } else {
+#endif
+            if (response_cb) {
+                response_cb(assembler.buf, assembler.total_length);
+            }
+#ifdef CONFIG_BLERPC_ENCRYPTION
         }
+#endif
         container_assembler_init(&assembler);
     } else if (rc < 0) {
         LOG_ERR("Assembler error");
@@ -310,6 +358,10 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
         bt_conn_unref(current_conn);
         current_conn = NULL;
     }
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    encryption_active = false;
+    memset(&crypto_session, 0, sizeof(crypto_session));
+#endif
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -347,7 +399,7 @@ int ble_central_connect(void)
 
     LOG_INF("Scanning for blerpc peripheral...");
 
-    err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, device_found);
+    err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
     if (err) {
         LOG_ERR("Scan start failed (err %d)", err);
         return err;
@@ -411,6 +463,23 @@ int ble_central_write(const uint8_t *data, size_t len)
     return bt_gatt_write_without_response(current_conn, char_value_handle, data, len, false);
 }
 
+int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len, uint8_t *out,
+                                size_t out_size, size_t *out_len)
+{
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    if (encryption_active) {
+        return blerpc_crypto_session_encrypt(&crypto_session, out, out_len, plaintext,
+                                             plaintext_len);
+    }
+#endif
+    if (plaintext_len > out_size) {
+        return -ENOMEM;
+    }
+    memcpy(out, plaintext, plaintext_len);
+    *out_len = plaintext_len;
+    return 0;
+}
+
 uint16_t ble_central_get_mtu(void)
 {
     if (current_conn) {
@@ -457,6 +526,148 @@ uint16_t ble_central_get_max_request_payload_size(void)
 uint16_t ble_central_get_max_response_payload_size(void)
 {
     return max_response_payload_size;
+}
+
+uint16_t ble_central_get_capability_flags(void)
+{
+    return capability_flags;
+}
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+
+int ble_central_perform_key_exchange(void)
+{
+    int err;
+
+    /* PSA Crypto must be initialized before any PSA operations */
+    psa_status_t psa_rc = psa_crypto_init();
+    if (psa_rc != PSA_SUCCESS) {
+        LOG_ERR("psa_crypto_init failed: %d", (int)psa_rc);
+        return -EIO;
+    }
+
+    /* Initialize key exchange state machine */
+    blerpc_central_kx_init(&central_kx);
+
+    /* Step 1: Generate ephemeral keypair and build step 1 payload */
+    uint8_t step1_payload[BLERPC_STEP1_SIZE];
+    if (blerpc_central_kx_start(&central_kx, step1_payload) != 0) {
+        LOG_ERR("Key exchange start failed");
+        return -EIO;
+    }
+
+    /* Send step 1 as control container */
+    uint8_t ctrl_buf[BLERPC_STEP1_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+    struct container_header ctrl = {
+        .transaction_id = 0,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+        .payload_len = BLERPC_STEP1_SIZE,
+        .payload = step1_payload,
+    };
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n < 0) {
+        LOG_ERR("Step 1 serialize failed");
+        return -EINVAL;
+    }
+
+    k_sem_reset(&kx_sem);
+    err = ble_central_write(ctrl_buf, (size_t)n);
+    if (err) {
+        LOG_ERR("Step 1 write failed: %d", err);
+        return err;
+    }
+
+    /* Step 2: Wait for peripheral's response */
+    err = k_sem_take(&kx_sem, K_SECONDS(5));
+    if (err) {
+        LOG_ERR("Key exchange step 2 timed out");
+        return -ETIMEDOUT;
+    }
+
+    /* Parse step 2 container to get payload */
+    struct container_header step2_hdr;
+    if (container_parse_header(kx_response_buf, kx_response_len, &step2_hdr) != 0) {
+        LOG_ERR("Step 2 container parse failed");
+        return -EINVAL;
+    }
+
+    /* Process step 2 and produce step 3 */
+    uint8_t step3_payload[BLERPC_STEP3_SIZE];
+    int kx_rc = blerpc_central_kx_process_step2(&central_kx, step2_hdr.payload,
+                                                step2_hdr.payload_len, step3_payload, NULL);
+    if (kx_rc != 0) {
+        LOG_ERR("Key exchange step 2 processing failed: %d", kx_rc);
+        return -EACCES;
+    }
+
+    LOG_INF("Peripheral signature verified");
+
+    /* Send step 3 */
+    uint8_t step3_buf[BLERPC_STEP3_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+    struct container_header step3_ctrl = {
+        .transaction_id = 0,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+        .payload_len = BLERPC_STEP3_SIZE,
+        .payload = step3_payload,
+    };
+    n = container_serialize(&step3_ctrl, step3_buf, sizeof(step3_buf));
+    if (n < 0) {
+        LOG_ERR("Step 3 serialize failed");
+        return -EINVAL;
+    }
+
+    k_sem_reset(&kx_sem);
+    err = ble_central_write(step3_buf, (size_t)n);
+    if (err) {
+        LOG_ERR("Step 3 write failed: %d", err);
+        return err;
+    }
+
+    /* Step 4: Wait for peripheral's confirmation */
+    err = k_sem_take(&kx_sem, K_SECONDS(5));
+    if (err) {
+        LOG_ERR("Key exchange step 4 timed out");
+        return -ETIMEDOUT;
+    }
+
+    /* Parse step 4 container */
+    struct container_header step4_hdr;
+    if (container_parse_header(kx_response_buf, kx_response_len, &step4_hdr) != 0) {
+        LOG_ERR("Step 4 container parse failed");
+        return -EINVAL;
+    }
+
+    /* Finish key exchange: verify confirmation and produce session */
+    kx_rc = blerpc_central_kx_finish(&central_kx, step4_hdr.payload, step4_hdr.payload_len,
+                                     &crypto_session);
+    if (kx_rc != 0) {
+        LOG_ERR("Key exchange finish failed: %d", kx_rc);
+        return -EACCES;
+    }
+
+    encryption_active = true;
+    LOG_INF("E2E encryption established");
+    return 0;
+}
+#else
+int ble_central_perform_key_exchange(void)
+{
+    LOG_ERR("Encryption support not compiled in (CONFIG_BLERPC_ENCRYPTION)");
+    return -ENOTSUP;
+}
+#endif /* CONFIG_BLERPC_ENCRYPTION */
+
+bool ble_central_is_encrypted(void)
+{
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    return encryption_active;
+#else
+    return false;
+#endif
 }
 
 void ble_central_set_stream_end_cb(ble_central_stream_end_cb_t cb)

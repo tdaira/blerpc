@@ -23,3 +23,25 @@ config BLERPC_WORK_STACK_SIZE
 	default MAIN_STACK_SIZE
 	help
 	  Stack size for the blerpc request processing work queue.
+
+config BLERPC_ENCRYPTION
+	bool "Enable E2E encryption"
+	default n
+	depends on BLERPC_PROTOCOL_CRYPTO
+	help
+	  Enable E2E encryption on the peripheral.
+	  Requires X25519 and Ed25519 private keys.
+
+config BLERPC_X25519_PRIVATE_KEY
+	string "X25519 private key (hex, 64 chars)"
+	default ""
+	depends on BLERPC_ENCRYPTION
+	help
+	  Peripheral X25519 private key as hex string (32 bytes = 64 hex chars).
+
+config BLERPC_ED25519_PRIVATE_KEY
+	string "Ed25519 private key seed (hex, 64 chars)"
+	default ""
+	depends on BLERPC_ENCRYPTION
+	help
+	  Peripheral Ed25519 private key seed as hex string (32 bytes = 64 hex chars).

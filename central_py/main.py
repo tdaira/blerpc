@@ -30,29 +30,35 @@ async def main():
 
         # Echo test
         message = "Hello, blerpc!"
-        result = await client.echo(message)
+        result = await client.echo(message=message)
         logger.info(
-            "Echo: sent=%r received=%r match=%s", message, result, message == result
+            "Echo: sent=%r received=%r match=%s",
+            message,
+            result.message,
+            message == result.message,
         )
 
         # Flash read test
         address = 0x00000000
         length = 16
-        data = await client.flash_read(address, length)
+        resp = await client.flash_read(address=address, length=length)
         logger.info(
-            "Flash read: address=0x%08X length=%d data=%s", address, length, data.hex()
+            "Flash read: address=0x%08X length=%d data=%s",
+            address,
+            length,
+            resp.data.hex(),
         )
 
         # Flash read speed test
         address = 0x00000000
         length = 4096
         start = time.monotonic()
-        data = await client.flash_read(address, length)
+        resp = await client.flash_read(address=address, length=length)
         elapsed = time.monotonic() - start
-        throughput = len(data) / elapsed if elapsed > 0 else 0
+        throughput = len(resp.data) / elapsed if elapsed > 0 else 0
         logger.info(
             "Flash speed test: %d bytes in %.3fs = %.1f bytes/s (%.1f kbps)",
-            len(data),
+            len(resp.data),
             elapsed,
             throughput,
             throughput * 8 / 1000,

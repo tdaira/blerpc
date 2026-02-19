@@ -15,12 +15,18 @@ import time
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
     BLERPC_ERROR_RESPONSE_TOO_LARGE,
+    CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
     Container,
     ContainerAssembler,
     ContainerSplitter,
     ContainerType,
     ControlCmd,
     make_stream_end_p2c,
+)
+from blerpc_protocol.crypto import (
+    BlerpcCrypto,
+    BlerpcCryptoSession,
+    PeripheralKeyExchange,
 )
 
 # Import protobuf definitions from central_py/blerpc/
@@ -89,7 +95,11 @@ HANDLERS["counter_upload"] = handle_counter_upload
 
 
 class BlerpcPeripheral:
-    def __init__(self):
+    def __init__(
+        self,
+        x25519_private_key_hex: str | None = None,
+        ed25519_private_key_hex: str | None = None,
+    ):
         self.server: BlessServer | None = None
         self.assembler = ContainerAssembler()
         self.splitter = ContainerSplitter(mtu=MTU)
@@ -97,6 +107,22 @@ class BlerpcPeripheral:
         self._send_queue: list[tuple[bytes, int]] = []
         self._send_lock = threading.Lock()
         self._upload_count = 0
+
+        # Encryption state
+        self._encryption_supported = False
+        self._session: BlerpcCryptoSession | None = None
+        self._kx: PeripheralKeyExchange | None = None
+
+        if x25519_private_key_hex and ed25519_private_key_hex:
+            x25519_priv_bytes = bytes.fromhex(x25519_private_key_hex)
+            ed25519_priv_bytes = bytes.fromhex(ed25519_private_key_hex)
+            x25519_privkey = BlerpcCrypto.x25519_private_from_bytes(x25519_priv_bytes)
+            ed25519_privkey = BlerpcCrypto.ed25519_private_from_bytes(
+                ed25519_priv_bytes
+            )
+            self._kx = PeripheralKeyExchange(x25519_privkey, ed25519_privkey)
+            self._encryption_supported = True
+            logger.info("Encryption keys loaded")
 
     async def start(self):
         self._loop = asyncio.get_event_loop()
@@ -149,18 +175,26 @@ class BlerpcPeripheral:
                     daemon=True,
                 ).start()
             elif container.control_cmd == ControlCmd.CAPABILITIES:
+                flags = 0
+                if self._encryption_supported:
+                    flags |= CAPABILITY_FLAG_ENCRYPTION_SUPPORTED
                 logger.info(
-                    "Capabilities request, max_req=65535 max_resp=%d",
+                    "Capabilities request, max_req=65535 max_resp=%d flags=0x%04x",
                     MAX_RESPONSE_PAYLOAD_SIZE,
+                    flags,
                 )
                 resp = Container(
                     transaction_id=container.transaction_id,
                     sequence_number=0,
                     container_type=ContainerType.CONTROL,
                     control_cmd=ControlCmd.CAPABILITIES,
-                    payload=struct.pack("<HH", 65535, MAX_RESPONSE_PAYLOAD_SIZE),
+                    payload=struct.pack(
+                        "<HHH", 65535, MAX_RESPONSE_PAYLOAD_SIZE, flags
+                    ),
                 )
                 self._send_container_sync(resp)
+            elif container.control_cmd == ControlCmd.KEY_EXCHANGE:
+                self._handle_key_exchange(container)
             return
 
         # Feed into assembler
@@ -174,6 +208,50 @@ class BlerpcPeripheral:
                 daemon=True,
             ).start()
 
+    def _handle_key_exchange(self, container: Container):
+        """Handle KEY_EXCHANGE control containers."""
+        if not self._encryption_supported or self._kx is None:
+            logger.warning("KEY_EXCHANGE received but encryption not supported")
+            return
+
+        payload = container.payload
+        if len(payload) < 1:
+            return
+
+        step = payload[0]
+
+        if step == 0x01:
+            # Step 1→2: Parse central pubkey, sign, derive key, send step 2
+            step2 = self._kx.process_step1(payload)
+            resp = Container(
+                transaction_id=container.transaction_id,
+                sequence_number=0,
+                container_type=ContainerType.CONTROL,
+                control_cmd=ControlCmd.KEY_EXCHANGE,
+                payload=step2,
+            )
+            self._send_container_sync(resp)
+            logger.info("KEY_EXCHANGE step 1→2 complete")
+
+        elif step == 0x03:
+            # Step 3→4: Verify confirmation, send step 4, establish session
+            try:
+                step4, session = self._kx.process_step3(payload)
+            except ValueError as e:
+                logger.error("Step 3 failed: %s: %s", type(e).__name__, e)
+                return
+
+            resp = Container(
+                transaction_id=container.transaction_id,
+                sequence_number=0,
+                container_type=ContainerType.CONTROL,
+                control_cmd=ControlCmd.KEY_EXCHANGE,
+                payload=step4,
+            )
+            self._send_container_sync(resp)
+            self._session = session
+            logger.info("E2E encryption established")
+
     def _process_request_thread(self, payload: bytes, transaction_id: int):
         try:
             self._process_request(payload, transaction_id)
@@ -181,6 +259,14 @@ class BlerpcPeripheral:
             logger.exception("Error processing request")
 
     def _process_request(self, payload: bytes, transaction_id: int):
+        # Decrypt if encryption is active
+        if self._session is not None:
+            try:
+                payload = self._session.decrypt(payload)
+            except RuntimeError as e:
+                logger.error("Decryption/replay error: %s", e)
+                return
+
         cmd = CommandPacket.deserialize(payload)
         if cmd.cmd_type != CommandType.REQUEST:
             logger.error("Expected request, got type=%d", cmd.cmd_type)
@@ -226,14 +312,21 @@ class BlerpcPeripheral:
             )
             return
 
-        containers = self.splitter.split(resp_payload, transaction_id=transaction_id)
+        send_payload = self._maybe_encrypt(resp_payload)
+        containers = self.splitter.split(send_payload, transaction_id=transaction_id)
         logger.info(
             "Sending %d containers (%d bytes payload)",
             len(containers),
-            len(resp_payload),
+            len(send_payload),
         )
         for c in containers:
             self._send_container_sync(c)
+
+    def _maybe_encrypt(self, payload: bytes) -> bytes:
+        """Encrypt payload if encryption is active, otherwise return as-is."""
+        if self._session is None:
+            return payload
+        return self._session.encrypt(payload)
 
     def _handle_counter_stream(self, req_data: bytes):
         """Handle counter_stream: send N responses + STREAM_END_P2C."""
@@ -249,8 +342,9 @@ class BlerpcPeripheral:
                 data=resp.SerializeToString(),
             )
             resp_payload = resp_cmd.serialize()
+            send_payload = self._maybe_encrypt(resp_payload)
             tid = self.splitter.next_transaction_id()
-            containers = self.splitter.split(resp_payload, transaction_id=tid)
+            containers = self.splitter.split(send_payload, transaction_id=tid)
             for c in containers:
                 self._send_container_sync(c)
 
@@ -276,8 +370,9 @@ class BlerpcPeripheral:
             data=resp.SerializeToString(),
         )
         resp_payload = resp_cmd.serialize()
+        send_payload = self._maybe_encrypt(resp_payload)
         tid = self.splitter.next_transaction_id()
-        containers = self.splitter.split(resp_payload, transaction_id=tid)
+        containers = self.splitter.split(send_payload, transaction_id=tid)
         for c in containers:
             self._send_container_sync(c)
 
@@ -299,7 +394,12 @@ class BlerpcPeripheral:
 
 
 async def main():
-    peripheral = BlerpcPeripheral()
+    x25519_key = os.environ.get("BLERPC_X25519_KEY")
+    ed25519_key = os.environ.get("BLERPC_ED25519_KEY")
+    peripheral = BlerpcPeripheral(
+        x25519_private_key_hex=x25519_key,
+        ed25519_private_key_hex=ed25519_key,
+    )
     await peripheral.start()
 
     try:

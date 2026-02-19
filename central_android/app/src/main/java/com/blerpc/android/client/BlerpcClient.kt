@@ -6,6 +6,10 @@ import com.blerpc.android.ble.BleTransport
 import com.blerpc.android.ble.SERVICE_UUID
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.protocol.*
+import com.blerpc.protocol.BlerpcCryptoSession
+import com.blerpc.protocol.CentralKeyExchange
+import com.blerpc.protocol.CAPABILITY_FLAG_ENCRYPTION_SUPPORTED
+import com.blerpc.protocol.makeKeyExchange
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -28,6 +32,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
     private var timeoutMs: Long = 100
     private var maxRequestPayloadSize: Int? = null
     private var maxResponsePayloadSize: Int? = null
+
+    // Encryption state
+    private var session: BlerpcCryptoSession? = null
 
     val mtu: Int get() = transport.mtu
 
@@ -78,19 +85,85 @@ class BlerpcClient(context: Context) : GeneratedClient() {
         val resp = Container.deserialize(data)
         if (resp.containerType == ContainerType.CONTROL &&
             resp.controlCmd == ControlCmd.CAPABILITIES &&
-            resp.payload.size == 4
+            resp.payload.size >= 6
         ) {
             val buf = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN)
             val maxReq = buf.short.toInt() and 0xFFFF
             val maxResp = buf.short.toInt() and 0xFFFF
+            val flags = buf.short.toInt() and 0xFFFF
             if (maxReq == 0 || maxResp == 0) {
                 Log.w(TAG, "Peripheral reported zero capability: max_request=$maxReq, max_response=$maxResp")
             }
             maxRequestPayloadSize = maxReq
             maxResponsePayloadSize = maxResp
+            Log.d(TAG, "Peripheral capabilities: max_request=$maxReq, max_response=$maxResp, flags=0x${flags.toString(16).padStart(4, '0')}")
+
+            // Initiate key exchange if peripheral supports encryption
+            if (flags and CAPABILITY_FLAG_ENCRYPTION_SUPPORTED != 0) {
+                performKeyExchange()
+            }
         } else {
             Log.w(TAG, "Unexpected capabilities response: type=${resp.containerType}, cmd=${resp.controlCmd}, payload_len=${resp.payload.size}")
         }
+    }
+
+    private suspend fun performKeyExchange() {
+        val s = splitter ?: throw IllegalStateException("Not connected")
+        val kx = CentralKeyExchange()
+
+        // Step 1: Send central's ephemeral public key
+        val step1 = kx.start()
+        val tid1 = s.nextTransactionId()
+        val req1 = makeKeyExchange(transactionId = tid1, payload = step1)
+        transport.write(req1.serialize())
+
+        // Step 2: Receive peripheral's response
+        val data2 = transport.readNotify(2000)
+        val resp2 = Container.deserialize(data2)
+        if (resp2.containerType != ContainerType.CONTROL ||
+            resp2.controlCmd != ControlCmd.KEY_EXCHANGE
+        ) {
+            Log.e(TAG, "Expected KEY_EXCHANGE step 2, got something else")
+            return
+        }
+
+        val step3 = try {
+            kx.processStep2(resp2.payload)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "Key exchange step 2 failed: ${e.message}")
+            return
+        }
+
+        // Step 3: Send encrypted confirmation
+        val tid3 = s.nextTransactionId()
+        val req3 = makeKeyExchange(transactionId = tid3, payload = step3)
+        transport.write(req3.serialize())
+
+        // Step 4: Receive peripheral's confirmation
+        val data4 = transport.readNotify(2000)
+        val resp4 = Container.deserialize(data4)
+        if (resp4.containerType != ContainerType.CONTROL ||
+            resp4.controlCmd != ControlCmd.KEY_EXCHANGE
+        ) {
+            Log.e(TAG, "Expected KEY_EXCHANGE step 4, got something else")
+            return
+        }
+
+        session = try {
+            kx.finish(resp4.payload)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "Key exchange step 4 failed: ${e.message}")
+            return
+        }
+        Log.i(TAG, "E2E encryption established")
+    }
+
+    private fun encryptPayload(payload: ByteArray): ByteArray {
+        return session?.encrypt(payload) ?: payload
+    }
+
+    private fun decryptPayload(payload: ByteArray): ByteArray {
+        return session?.decrypt(payload) ?: payload
     }
 
     override suspend fun call(cmdName: String, requestData: ByteArray): ByteArray {
@@ -107,7 +180,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             if (payload.size > limit) throw PayloadTooLargeError(payload.size, limit)
         }
 
-        val containers = s.split(payload)
+        // Encrypt if active, then split into containers and send
+        val sendPayload = encryptPayload(payload)
+        val containers = s.split(sendPayload)
         for (c in containers) {
             transport.write(c.serialize())
         }
@@ -134,7 +209,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
             val result = assembler.feed(container)
             if (result != null) {
-                val resp = CommandPacket.deserialize(result)
+                // Decrypt if active
+                val decrypted = decryptPayload(result)
+                val resp = CommandPacket.deserialize(decrypted)
                 if (resp.cmdType != CommandType.RESPONSE) {
                     throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
@@ -160,7 +237,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             if (payload.size > limit) throw PayloadTooLargeError(payload.size, limit)
         }
 
-        val containers = s.split(payload)
+        // Encrypt if active, then split into containers and send
+        val sendPayload = encryptPayload(payload)
+        val containers = s.split(sendPayload)
         for (c in containers) {
             transport.write(c.serialize())
         }
@@ -191,7 +270,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
             val result = assembler.feed(container)
             if (result != null) {
-                val resp = CommandPacket.deserialize(result)
+                // Decrypt each received response
+                val decrypted = decryptPayload(result)
+                val resp = CommandPacket.deserialize(decrypted)
                 if (resp.cmdType != CommandType.RESPONSE) {
                     throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
@@ -208,6 +289,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
     ): ByteArray {
         val s = splitter ?: throw IllegalStateException("Not connected")
 
+        // Encrypt each message
         for (msgData in messages) {
             val cmd = CommandPacket(
                 cmdType = CommandType.REQUEST,
@@ -215,7 +297,8 @@ class BlerpcClient(context: Context) : GeneratedClient() {
                 data = msgData
             )
             val payload = cmd.serialize()
-            val containers = s.split(payload)
+            val sendPayload = encryptPayload(payload)
+            val containers = s.split(sendPayload)
             for (c in containers) {
                 transport.write(c.serialize())
             }
@@ -248,7 +331,9 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
             val result = assembler.feed(container)
             if (result != null) {
-                val resp = CommandPacket.deserialize(result)
+                // Decrypt final response
+                val decrypted = decryptPayload(result)
+                val resp = CommandPacket.deserialize(decrypted)
                 if (resp.cmdType != CommandType.RESPONSE) {
                     throw ProtocolException("Expected response, got type=${resp.cmdType}")
                 }
