@@ -4,6 +4,7 @@
 #ifdef CONFIG_BLERPC_ENCRYPTION
 #include <blerpc_protocol/crypto.h>
 #include <psa/crypto.h>
+#include <string.h>
 #endif
 
 #include <zephyr/kernel.h>
@@ -45,7 +46,6 @@ static K_SEM_DEFINE(caps_sem, 0, 1);
 /* Encryption state */
 static struct blerpc_crypto_session crypto_session;
 static bool encryption_active;
-static struct blerpc_central_key_exchange central_kx;
 static K_SEM_DEFINE(kx_sem, 0, 1);
 static uint8_t kx_response_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
 static size_t kx_response_len;
@@ -535,10 +535,50 @@ uint16_t ble_central_get_capability_flags(void)
 
 #ifdef CONFIG_BLERPC_ENCRYPTION
 
+static int kx_send_cb(const uint8_t *payload, size_t len, void *ctx)
+{
+    (void)ctx;
+    uint8_t ctrl_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+    struct container_header ctrl = {
+        .transaction_id = 0,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+        .payload_len = len,
+        .payload = payload,
+    };
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n < 0) {
+        return -1;
+    }
+
+    k_sem_reset(&kx_sem);
+    return ble_central_write(ctrl_buf, (size_t)n);
+}
+
+static int kx_recv_cb(uint8_t *buf, size_t buf_size, size_t *out_len, void *ctx)
+{
+    (void)ctx;
+    int err = k_sem_take(&kx_sem, K_SECONDS(5));
+    if (err) {
+        return -1;
+    }
+
+    struct container_header hdr;
+    if (container_parse_header(kx_response_buf, kx_response_len, &hdr) != 0) {
+        return -1;
+    }
+
+    if (hdr.payload_len > buf_size) {
+        return -1;
+    }
+    memcpy(buf, hdr.payload, hdr.payload_len);
+    *out_len = hdr.payload_len;
+    return 0;
+}
+
 int ble_central_perform_key_exchange(void)
 {
-    int err;
-
     /* PSA Crypto must be initialized before any PSA operations */
     psa_status_t psa_rc = psa_crypto_init();
     if (psa_rc != PSA_SUCCESS) {
@@ -546,106 +586,10 @@ int ble_central_perform_key_exchange(void)
         return -EIO;
     }
 
-    /* Initialize key exchange state machine */
-    blerpc_central_kx_init(&central_kx);
-
-    /* Step 1: Generate ephemeral keypair and build step 1 payload */
-    uint8_t step1_payload[BLERPC_STEP1_SIZE];
-    if (blerpc_central_kx_start(&central_kx, step1_payload) != 0) {
-        LOG_ERR("Key exchange start failed");
-        return -EIO;
-    }
-
-    /* Send step 1 as control container */
-    uint8_t ctrl_buf[BLERPC_STEP1_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
-    struct container_header ctrl = {
-        .transaction_id = 0,
-        .sequence_number = 0,
-        .type = CONTAINER_TYPE_CONTROL,
-        .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
-        .payload_len = BLERPC_STEP1_SIZE,
-        .payload = step1_payload,
-    };
-    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
-    if (n < 0) {
-        LOG_ERR("Step 1 serialize failed");
-        return -EINVAL;
-    }
-
-    k_sem_reset(&kx_sem);
-    err = ble_central_write(ctrl_buf, (size_t)n);
-    if (err) {
-        LOG_ERR("Step 1 write failed: %d", err);
-        return err;
-    }
-
-    /* Step 2: Wait for peripheral's response */
-    err = k_sem_take(&kx_sem, K_SECONDS(5));
-    if (err) {
-        LOG_ERR("Key exchange step 2 timed out");
-        return -ETIMEDOUT;
-    }
-
-    /* Parse step 2 container to get payload */
-    struct container_header step2_hdr;
-    if (container_parse_header(kx_response_buf, kx_response_len, &step2_hdr) != 0) {
-        LOG_ERR("Step 2 container parse failed");
-        return -EINVAL;
-    }
-
-    /* Process step 2 and produce step 3 */
-    uint8_t step3_payload[BLERPC_STEP3_SIZE];
-    int kx_rc = blerpc_central_kx_process_step2(&central_kx, step2_hdr.payload,
-                                                step2_hdr.payload_len, step3_payload, NULL);
-    if (kx_rc != 0) {
-        LOG_ERR("Key exchange step 2 processing failed: %d", kx_rc);
-        return -EACCES;
-    }
-
-    LOG_INF("Peripheral signature verified");
-
-    /* Send step 3 */
-    uint8_t step3_buf[BLERPC_STEP3_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
-    struct container_header step3_ctrl = {
-        .transaction_id = 0,
-        .sequence_number = 0,
-        .type = CONTAINER_TYPE_CONTROL,
-        .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
-        .payload_len = BLERPC_STEP3_SIZE,
-        .payload = step3_payload,
-    };
-    n = container_serialize(&step3_ctrl, step3_buf, sizeof(step3_buf));
-    if (n < 0) {
-        LOG_ERR("Step 3 serialize failed");
-        return -EINVAL;
-    }
-
-    k_sem_reset(&kx_sem);
-    err = ble_central_write(step3_buf, (size_t)n);
-    if (err) {
-        LOG_ERR("Step 3 write failed: %d", err);
-        return err;
-    }
-
-    /* Step 4: Wait for peripheral's confirmation */
-    err = k_sem_take(&kx_sem, K_SECONDS(5));
-    if (err) {
-        LOG_ERR("Key exchange step 4 timed out");
-        return -ETIMEDOUT;
-    }
-
-    /* Parse step 4 container */
-    struct container_header step4_hdr;
-    if (container_parse_header(kx_response_buf, kx_response_len, &step4_hdr) != 0) {
-        LOG_ERR("Step 4 container parse failed");
-        return -EINVAL;
-    }
-
-    /* Finish key exchange: verify confirmation and produce session */
-    kx_rc = blerpc_central_kx_finish(&central_kx, step4_hdr.payload, step4_hdr.payload_len,
-                                     &crypto_session);
-    if (kx_rc != 0) {
-        LOG_ERR("Key exchange finish failed: %d", kx_rc);
+    int rc = blerpc_central_perform_key_exchange(
+        kx_send_cb, kx_recv_cb, NULL, &crypto_session, NULL);
+    if (rc != 0) {
+        LOG_ERR("Key exchange failed: %d", rc);
         return -EACCES;
     }
 

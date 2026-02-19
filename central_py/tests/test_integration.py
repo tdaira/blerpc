@@ -41,12 +41,14 @@ async def test_capabilities(client):
     """Verify capabilities were received during connect()."""
     print(
         f"\nCapabilities: max_request={client.max_request_payload_size}, "
-        f"max_response={client.max_response_payload_size}"
+        f"max_response={client.max_response_payload_size}, "
+        f"encrypted={client.is_encrypted}"
     )
     assert client.max_request_payload_size is not None
     assert client.max_response_payload_size is not None
     assert client.max_request_payload_size > 0
     assert client.max_response_payload_size > 0
+    assert client.is_encrypted, "E2E encryption should be established"
 
 
 @pytest.mark.asyncio

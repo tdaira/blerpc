@@ -38,7 +38,7 @@ final class TestRunner: ObservableObject {
             log("Connecting to \(target.name ?? target.id.uuidString)...")
             try await client.connect(device: target)
             let mtu = client.mtu
-            log("Connected. MTU=\(mtu)")
+            log("Connected. MTU=\(mtu), encrypted=\(client.isEncrypted)")
 
             for iter in 1...iterations {
                 if iterations > 1 {

@@ -20,7 +20,7 @@ from blerpc_protocol.container import (
     make_stream_end_c2p,
     make_timeout_request,
 )
-from blerpc_protocol.crypto import BlerpcCryptoSession, CentralKeyExchange
+from blerpc_protocol.crypto import BlerpcCryptoSession, central_perform_key_exchange
 
 from .generated import blerpc_pb2
 from .generated.generated_client import GeneratedClientMixin
@@ -70,6 +70,10 @@ class BlerpcClient(GeneratedClientMixin):
     @property
     def max_response_payload_size(self) -> int | None:
         return self._max_response_payload_size
+
+    @property
+    def is_encrypted(self) -> bool:
+        return self._session is not None
 
     async def scan(
         self,
@@ -164,25 +168,22 @@ class BlerpcClient(GeneratedClientMixin):
 
     async def _perform_key_exchange(self) -> None:
         """Perform the 4-step key exchange handshake."""
-        kx = CentralKeyExchange()
 
-        # Step 1: Send central's ephemeral public key
-        step1 = kx.start()
-        tid = self._splitter.next_transaction_id()
-        req = make_key_exchange(transaction_id=tid, payload=step1)
-        await self._transport.write(req.serialize())
+        async def send(payload: bytes) -> None:
+            tid = self._splitter.next_transaction_id()
+            req = make_key_exchange(transaction_id=tid, payload=payload)
+            await self._transport.write(req.serialize())
 
-        # Step 2: Receive peripheral's response
-        data = await self._transport.read_notify(timeout=2.0)
-        resp = Container.deserialize(data)
-        if (
-            resp.container_type != ContainerType.CONTROL
-            or resp.control_cmd != ControlCmd.KEY_EXCHANGE
-        ):
-            logger.error("Expected KEY_EXCHANGE step 2, got something else")
-            return
+        async def receive() -> bytes:
+            data = await self._transport.read_notify(timeout=2.0)
+            resp = Container.deserialize(data)
+            if (
+                resp.container_type != ContainerType.CONTROL
+                or resp.control_cmd != ControlCmd.KEY_EXCHANGE
+            ):
+                raise ValueError("Expected KEY_EXCHANGE response, got something else")
+            return resp.payload
 
-        # Build TOFU verify callback if configured
         verify_cb = None
         if self._known_keys_path:
             from .known_keys import check_or_store_key
@@ -193,30 +194,11 @@ class BlerpcClient(GeneratedClientMixin):
                 )
 
         try:
-            step3 = kx.process_step2(resp.payload, verify_key_cb=verify_cb)
+            self._session = await central_perform_key_exchange(
+                send, receive, verify_key_cb=verify_cb
+            )
         except ValueError as e:
-            logger.error("Key exchange step 2 failed: %s", e)
-            return
-
-        # Step 3: Send encrypted confirmation
-        tid = self._splitter.next_transaction_id()
-        req = make_key_exchange(transaction_id=tid, payload=step3)
-        await self._transport.write(req.serialize())
-
-        # Step 4: Receive peripheral's confirmation
-        data = await self._transport.read_notify(timeout=2.0)
-        resp = Container.deserialize(data)
-        if (
-            resp.container_type != ContainerType.CONTROL
-            or resp.control_cmd != ControlCmd.KEY_EXCHANGE
-        ):
-            logger.error("Expected KEY_EXCHANGE step 4, got something else")
-            return
-
-        try:
-            self._session = kx.finish(resp.payload)
-        except ValueError as e:
-            logger.error("Key exchange step 4 failed: %s", e)
+            logger.error("Key exchange failed: %s", e)
             return
 
         logger.info("E2E encryption established")

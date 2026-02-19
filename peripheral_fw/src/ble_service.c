@@ -424,57 +424,33 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             }
 #ifdef CONFIG_BLERPC_ENCRYPTION
         } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
-            if (hdr.payload_len < 1) {
+            uint8_t kx_out[BLERPC_STEP2_SIZE]; /* large enough for step 2 or 4 */
+            size_t kx_out_len;
+            bool session_established;
+
+            if (blerpc_peripheral_kx_handle_step(&peripheral_kx,
+                                                  hdr.payload, hdr.payload_len,
+                                                  kx_out, sizeof(kx_out), &kx_out_len,
+                                                  &crypto_session, &session_established) != 0) {
+                LOG_ERR("Key exchange step processing failed");
                 return len;
             }
-            uint8_t step = hdr.payload[0];
-            if (step == BLERPC_KEY_EXCHANGE_STEP1 && hdr.payload_len >= BLERPC_STEP1_SIZE) {
-                /* Process step 1 and produce step 2 */
-                uint8_t step2_payload[BLERPC_STEP2_SIZE];
-                if (blerpc_peripheral_kx_process_step1(&peripheral_kx, hdr.payload, hdr.payload_len,
-                                                       step2_payload) != 0) {
-                    LOG_ERR("Key exchange step 1 processing failed");
-                    return len;
-                }
 
-                /* Send step 2 as control container */
-                uint8_t resp_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
-                struct container_header kx_ctrl = {
-                    .transaction_id = hdr.transaction_id,
-                    .sequence_number = 0,
-                    .type = CONTAINER_TYPE_CONTROL,
-                    .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
-                    .payload_len = BLERPC_STEP2_SIZE,
-                    .payload = step2_payload,
-                };
-                int n = container_serialize(&kx_ctrl, resp_buf, sizeof(resp_buf));
-                if (n > 0) {
-                    send_with_retry(resp_buf, (size_t)n);
-                }
+            uint8_t resp_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+            struct container_header kx_ctrl = {
+                .transaction_id = hdr.transaction_id,
+                .sequence_number = 0,
+                .type = CONTAINER_TYPE_CONTROL,
+                .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+                .payload_len = kx_out_len,
+                .payload = kx_out,
+            };
+            int n = container_serialize(&kx_ctrl, resp_buf, sizeof(resp_buf));
+            if (n > 0) {
+                send_with_retry(resp_buf, (size_t)n);
+            }
 
-            } else if (step == BLERPC_KEY_EXCHANGE_STEP3 && hdr.payload_len >= BLERPC_STEP3_SIZE) {
-                /* Process step 3 and produce step 4 + session */
-                uint8_t step4_payload[BLERPC_STEP4_SIZE];
-                if (blerpc_peripheral_kx_process_step3(&peripheral_kx, hdr.payload, hdr.payload_len,
-                                                       step4_payload, &crypto_session) != 0) {
-                    LOG_ERR("Key exchange step 3 processing failed");
-                    return len;
-                }
-
-                uint8_t resp_buf[BLERPC_STEP4_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
-                struct container_header kx_ctrl = {
-                    .transaction_id = hdr.transaction_id,
-                    .sequence_number = 0,
-                    .type = CONTAINER_TYPE_CONTROL,
-                    .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
-                    .payload_len = BLERPC_STEP4_SIZE,
-                    .payload = step4_payload,
-                };
-                int n = container_serialize(&kx_ctrl, resp_buf, sizeof(resp_buf));
-                if (n > 0) {
-                    send_with_retry(resp_buf, (size_t)n);
-                }
-
+            if (session_established) {
                 encryption_active = true;
                 LOG_INF("E2E encryption established");
             }

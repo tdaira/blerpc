@@ -7,9 +7,8 @@ import com.blerpc.android.ble.SERVICE_UUID
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.protocol.*
 import com.blerpc.protocol.BlerpcCryptoSession
-import com.blerpc.protocol.CentralKeyExchange
 import com.blerpc.protocol.CAPABILITY_FLAG_ENCRYPTION_SUPPORTED
-import com.blerpc.protocol.makeKeyExchange
+import com.blerpc.protocol.centralPerformKeyExchange
 import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -37,6 +36,7 @@ class BlerpcClient(context: Context) : GeneratedClient() {
     private var session: BlerpcCryptoSession? = null
 
     val mtu: Int get() = transport.mtu
+    val isEncrypted: Boolean get() = session != null
 
     suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = SERVICE_UUID): List<ScannedDevice> {
         return transport.scan(timeout, serviceUuid)
@@ -109,53 +109,29 @@ class BlerpcClient(context: Context) : GeneratedClient() {
 
     private suspend fun performKeyExchange() {
         val s = splitter ?: throw IllegalStateException("Not connected")
-        val kx = CentralKeyExchange()
 
-        // Step 1: Send central's ephemeral public key
-        val step1 = kx.start()
-        val tid1 = s.nextTransactionId()
-        val req1 = makeKeyExchange(transactionId = tid1, payload = step1)
-        transport.write(req1.serialize())
-
-        // Step 2: Receive peripheral's response
-        val data2 = transport.readNotify(2000)
-        val resp2 = Container.deserialize(data2)
-        if (resp2.containerType != ContainerType.CONTROL ||
-            resp2.controlCmd != ControlCmd.KEY_EXCHANGE
-        ) {
-            Log.e(TAG, "Expected KEY_EXCHANGE step 2, got something else")
-            return
+        try {
+            session = centralPerformKeyExchange(
+                send = { payload ->
+                    val tid = s.nextTransactionId()
+                    val req = makeKeyExchange(transactionId = tid, payload = payload)
+                    transport.write(req.serialize())
+                },
+                receive = {
+                    val data = transport.readNotify(2000)
+                    val resp = Container.deserialize(data)
+                    if (resp.containerType != ContainerType.CONTROL ||
+                        resp.controlCmd != ControlCmd.KEY_EXCHANGE
+                    ) {
+                        throw IllegalStateException("Expected KEY_EXCHANGE response, got something else")
+                    }
+                    resp.payload
+                },
+            )
+            Log.i(TAG, "E2E encryption established")
+        } catch (e: Exception) {
+            Log.e(TAG, "Key exchange failed: ${e.message}")
         }
-
-        val step3 = try {
-            kx.processStep2(resp2.payload)
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Key exchange step 2 failed: ${e.message}")
-            return
-        }
-
-        // Step 3: Send encrypted confirmation
-        val tid3 = s.nextTransactionId()
-        val req3 = makeKeyExchange(transactionId = tid3, payload = step3)
-        transport.write(req3.serialize())
-
-        // Step 4: Receive peripheral's confirmation
-        val data4 = transport.readNotify(2000)
-        val resp4 = Container.deserialize(data4)
-        if (resp4.containerType != ContainerType.CONTROL ||
-            resp4.controlCmd != ControlCmd.KEY_EXCHANGE
-        ) {
-            Log.e(TAG, "Expected KEY_EXCHANGE step 4, got something else")
-            return
-        }
-
-        session = try {
-            kx.finish(resp4.payload)
-        } catch (e: IllegalArgumentException) {
-            Log.e(TAG, "Key exchange step 4 failed: ${e.message}")
-            return
-        }
-        Log.i(TAG, "E2E encryption established")
     }
 
     private fun encryptPayload(payload: ByteArray): ByteArray {
