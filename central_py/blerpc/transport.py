@@ -37,10 +37,15 @@ class BleTransport:
         self._client: BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self._mtu: int = 23  # Default minimum BLE MTU
+        self._address: str | None = None
 
     @property
     def mtu(self) -> int:
         return self._mtu
+
+    @property
+    def address(self) -> str | None:
+        return self._address
 
     async def scan(
         self,
@@ -75,6 +80,7 @@ class BleTransport:
         logger.info("Connecting to %s...", device.address)
         self._client = BleakClient(device._bleak_device)
         await self._client.connect()
+        self._address = device.address
 
         # Get negotiated MTU
         self._mtu = self._client.mtu_size
