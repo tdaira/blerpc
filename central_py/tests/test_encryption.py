@@ -157,9 +157,7 @@ class MockEncryptedPeripheral:
         elif step == 0x03:
             # Step 3: Central sends encrypted confirmation
             encrypted = BlerpcCrypto.parse_step3_payload(payload)
-            plaintext = BlerpcCrypto.decrypt_confirmation(
-                self._session_key, encrypted
-            )
+            plaintext = BlerpcCrypto.decrypt_confirmation(self._session_key, encrypted)
             assert plaintext == CONFIRM_CENTRAL
 
             # Build step 4 response
@@ -289,9 +287,7 @@ class MockEncryptedPeripheral:
     def _handle_data_write(req_data: bytes) -> bytes:
         req = blerpc_pb2.DataWriteRequest()
         req.ParseFromString(req_data)
-        return blerpc_pb2.DataWriteResponse(
-            length=len(req.data)
-        ).SerializeToString()
+        return blerpc_pb2.DataWriteResponse(length=len(req.data)).SerializeToString()
 
     @staticmethod
     def _handle_counter_upload(req_data: bytes) -> bytes | None:
