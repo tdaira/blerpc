@@ -586,8 +586,8 @@ int ble_central_perform_key_exchange(void)
         return -EIO;
     }
 
-    int rc = blerpc_central_perform_key_exchange(
-        kx_send_cb, kx_recv_cb, NULL, &crypto_session, NULL);
+    int rc =
+        blerpc_central_perform_key_exchange(kx_send_cb, kx_recv_cb, NULL, &crypto_session, NULL);
     if (rc != 0) {
         LOG_ERR("Key exchange failed: %d", rc);
         return -EACCES;

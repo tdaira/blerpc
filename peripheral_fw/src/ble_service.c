@@ -428,10 +428,9 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             size_t kx_out_len;
             bool session_established;
 
-            if (blerpc_peripheral_kx_handle_step(&peripheral_kx,
-                                                  hdr.payload, hdr.payload_len,
-                                                  kx_out, sizeof(kx_out), &kx_out_len,
-                                                  &crypto_session, &session_established) != 0) {
+            if (blerpc_peripheral_kx_handle_step(&peripheral_kx, hdr.payload, hdr.payload_len,
+                                                 kx_out, sizeof(kx_out), &kx_out_len,
+                                                 &crypto_session, &session_established) != 0) {
                 LOG_ERR("Key exchange step processing failed");
                 return len;
             }

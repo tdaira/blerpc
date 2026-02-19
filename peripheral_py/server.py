@@ -25,6 +25,7 @@ from blerpc_protocol.container import (
 )
 from blerpc_protocol.crypto import (
     BlerpcCrypto,
+    BlerpcCryptoSession,
     PeripheralKeyExchange,
 )
 
