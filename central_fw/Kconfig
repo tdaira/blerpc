@@ -1,1 +1,8 @@
 source "Kconfig.zephyr"
+
+config BLERPC_ENCRYPTION
+	bool "Enable E2E encryption"
+	default n
+	depends on BLERPC_PROTOCOL_CRYPTO
+	help
+	  Enable E2E encryption on the central.

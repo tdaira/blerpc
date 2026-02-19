@@ -144,21 +144,6 @@ static bool data_write_decode_cb(pb_istream_t *stream, const pb_field_t *field, 
 
 /* ── counter_stream: P→C stream ───────────────────────────────────── */
 
-static int notify_send_cb(const uint8_t *data, size_t len, void *ctx)
-{
-    (void)ctx;
-    int rc;
-    for (int retries = 0; retries < 10; retries++) {
-        rc = ble_service_notify(data, len);
-        if (rc != -ENOMEM) {
-            return rc;
-        }
-        k_sleep(K_MSEC(5));
-    }
-    LOG_ERR("Notify send failed after retries: %d", rc);
-    return rc;
-}
-
 static int send_one_counter_stream_response(uint32_t seq, int32_t value)
 {
     blerpc_CounterStreamResponse resp = blerpc_CounterStreamResponse_init_zero;
@@ -181,10 +166,9 @@ static int send_one_counter_stream_response(uint32_t seq, int32_t value)
         return -1;
     }
 
-    /* Send via containers with retry */
+    /* Send via ble_service helper (handles encryption if active) */
     uint8_t tid = ble_service_next_transaction_id();
-    uint16_t mtu = ble_service_get_mtu();
-    return container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, notify_send_cb, NULL);
+    return ble_service_send_command_response(tid, cmd_buf, (size_t)cmd_len);
 }
 
 int handle_counter_stream(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
@@ -280,10 +264,9 @@ static void send_upload_response(struct k_work *work)
         return;
     }
 
-    /* Send via containers */
+    /* Send via ble_service helper (handles encryption if active) */
     uint8_t tid = ble_service_next_transaction_id();
-    uint16_t mtu = ble_service_get_mtu();
-    container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, notify_send_cb, NULL);
+    ble_service_send_command_response(tid, cmd_buf, (size_t)cmd_len);
 }
 
 void handlers_stream_init(void)

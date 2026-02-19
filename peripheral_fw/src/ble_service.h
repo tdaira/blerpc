@@ -67,6 +67,17 @@ uint8_t ble_service_next_transaction_id(void);
  */
 void ble_service_submit_work(struct k_work *work);
 
+/**
+ * Send a command response payload, encrypting if encryption is active.
+ * Splits the (possibly encrypted) payload into containers and sends via notify.
+ * @param transaction_id Transaction ID for the containers
+ * @param cmd_data       Serialized command payload (unencrypted)
+ * @param cmd_len        Length of command payload
+ * @return 0 on success, negative on error
+ */
+int ble_service_send_command_response(uint8_t transaction_id,
+                                      const uint8_t *cmd_data, size_t cmd_len);
+
 #ifdef __cplusplus
 }
 #endif

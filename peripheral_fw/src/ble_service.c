@@ -9,6 +9,11 @@
 #include <zephyr/logging/log.h>
 #include <pb_encode.h>
 
+#ifdef CONFIG_BLERPC_ENCRYPTION
+#include <blerpc_protocol/crypto.h>
+#include <psa/crypto.h>
+#endif
+
 LOG_MODULE_REGISTER(ble_service, LOG_LEVEL_INF);
 
 /* type(1) + name_len(1) + name(max 16) + data_len(2) */
@@ -21,6 +26,61 @@ static struct bt_conn *current_conn;
 static struct container_assembler assembler;
 static ble_service_stream_end_cb_t stream_end_cb;
 static uint8_t transaction_counter;
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+static struct blerpc_crypto_session crypto_session;
+static struct blerpc_peripheral_key_exchange peripheral_kx;
+static bool encryption_active;
+
+static int hex_to_bytes(const char *hex, uint8_t *out, size_t out_len)
+{
+    for (size_t i = 0; i < out_len; i++) {
+        unsigned int byte;
+        char tmp[3] = {hex[i * 2], hex[i * 2 + 1], '\0'};
+        if (sscanf(tmp, "%02x", &byte) != 1) {
+            return -1;
+        }
+        out[i] = (uint8_t)byte;
+    }
+    return 0;
+}
+
+static int load_keys(void)
+{
+    /* PSA Crypto must be initialized before any PSA operations */
+    psa_status_t psa_rc = psa_crypto_init();
+    if (psa_rc != PSA_SUCCESS) {
+        LOG_ERR("psa_crypto_init failed: %d", (int)psa_rc);
+        return -1;
+    }
+
+    const char *x25519_hex = CONFIG_BLERPC_X25519_PRIVATE_KEY;
+    const char *ed25519_hex = CONFIG_BLERPC_ED25519_PRIVATE_KEY;
+
+    if (strlen(x25519_hex) != 64 || strlen(ed25519_hex) != 64) {
+        LOG_ERR("Encryption keys not configured (must be 64 hex chars each)");
+        return -1;
+    }
+
+    uint8_t x25519_privkey[BLERPC_X25519_KEY_SIZE];
+    uint8_t ed25519_privkey[32];
+
+    if (hex_to_bytes(x25519_hex, x25519_privkey, 32) != 0 ||
+        hex_to_bytes(ed25519_hex, ed25519_privkey, 32) != 0) {
+        LOG_ERR("Invalid hex in encryption keys");
+        return -1;
+    }
+
+    /* Initialize peripheral key exchange (derives public keys internally) */
+    if (blerpc_peripheral_kx_init(&peripheral_kx, x25519_privkey, ed25519_privkey) != 0) {
+        LOG_ERR("Failed to initialize peripheral key exchange");
+        return -1;
+    }
+
+    LOG_INF("Encryption keys loaded");
+    return 0;
+}
+#endif /* CONFIG_BLERPC_ENCRYPTION */
 
 /* Work queue for async response processing */
 static struct k_work_q blerpc_work_q;
@@ -139,6 +199,13 @@ static bool streaming_pb_callback(pb_ostream_t *stream, const uint8_t *buf, size
     return streaming_write(ctx, buf, count) == 0;
 }
 
+/* Callback for container_split_and_send */
+static int container_send_cb(const uint8_t *data, size_t len, void *ctx)
+{
+    (void)ctx;
+    return send_with_retry(data, len);
+}
+
 /* ── Request processing ──────────────────────────────────────────────── */
 
 static void process_request(const uint8_t *data, size_t len, uint8_t transaction_id)
@@ -215,6 +282,41 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
 
     /* Set up streaming container sender */
     uint16_t mtu = ble_service_get_mtu();
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    if (encryption_active) {
+        /* When encryption is active, we need to serialize the full command
+         * payload first, encrypt it, then send via container splitter */
+        static uint8_t cmd_plain_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+        memcpy(cmd_plain_buf, cmd_hdr, cmd_hdr_size);
+
+        /* Encode protobuf into the buffer after the command header */
+        pb_ostream_t ostream = pb_ostream_from_buffer(cmd_plain_buf + cmd_hdr_size,
+                                                       sizeof(cmd_plain_buf) - cmd_hdr_size);
+        if (handler(cmd.data, cmd.data_len, &ostream) != 0) {
+            LOG_ERR("Handler encode pass failed");
+            return;
+        }
+
+        /* Encrypt the full command payload */
+        static uint8_t encrypted_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
+        size_t encrypted_len;
+        if (blerpc_crypto_session_encrypt(&crypto_session, encrypted_buf, &encrypted_len,
+                                           cmd_plain_buf, total_length) != 0) {
+            LOG_ERR("Response encryption failed");
+            return;
+        }
+
+        /* Send encrypted payload via container splitter */
+        int rc = container_split_and_send(transaction_id, encrypted_buf, encrypted_len,
+                                           mtu, container_send_cb, NULL);
+        if (rc < 0) {
+            LOG_ERR("Encrypted container send failed: %d", rc);
+        }
+        return;
+    }
+#endif
+
     struct streaming_ctx sctx = {
         .transaction_id = transaction_id,
         .mtu = mtu,
@@ -293,26 +395,90 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
                 stream_end_cb(hdr.transaction_id);
             }
         } else if (hdr.control_cmd == CONTROL_CMD_CAPABILITIES) {
-            uint8_t ctrl_buf[8];
+            uint8_t ctrl_buf[12];
             struct container_header ctrl = {
                 .transaction_id = hdr.transaction_id,
                 .sequence_number = 0,
                 .type = CONTAINER_TYPE_CONTROL,
                 .control_cmd = CONTROL_CMD_CAPABILITIES,
-                .payload_len = 4,
+                .payload_len = 6,
             };
-            uint8_t caps_payload[4];
+            uint8_t caps_payload[6];
             uint16_t max_req = CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE;
             uint16_t max_resp = CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE;
+            uint16_t flags = 0;
+#ifdef CONFIG_BLERPC_ENCRYPTION
+            flags |= CAPABILITY_FLAG_ENCRYPTION_SUPPORTED;
+#endif
             caps_payload[0] = (uint8_t)(max_req & 0xFF);
             caps_payload[1] = (uint8_t)(max_req >> 8);
             caps_payload[2] = (uint8_t)(max_resp & 0xFF);
             caps_payload[3] = (uint8_t)(max_resp >> 8);
+            caps_payload[4] = (uint8_t)(flags & 0xFF);
+            caps_payload[5] = (uint8_t)(flags >> 8);
             ctrl.payload = caps_payload;
             int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
             if (n > 0) {
                 ble_service_notify(ctrl_buf, (size_t)n);
             }
+#ifdef CONFIG_BLERPC_ENCRYPTION
+        } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
+            if (hdr.payload_len < 1) {
+                return len;
+            }
+            uint8_t step = hdr.payload[0];
+            if (step == BLERPC_KEY_EXCHANGE_STEP1 && hdr.payload_len >= BLERPC_STEP1_SIZE) {
+                /* Process step 1 and produce step 2 */
+                uint8_t step2_payload[BLERPC_STEP2_SIZE];
+                if (blerpc_peripheral_kx_process_step1(&peripheral_kx, hdr.payload,
+                                                        hdr.payload_len, step2_payload) != 0) {
+                    LOG_ERR("Key exchange step 1 processing failed");
+                    return len;
+                }
+
+                /* Send step 2 as control container */
+                uint8_t resp_buf[BLERPC_STEP2_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+                struct container_header kx_ctrl = {
+                    .transaction_id = hdr.transaction_id,
+                    .sequence_number = 0,
+                    .type = CONTAINER_TYPE_CONTROL,
+                    .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+                    .payload_len = BLERPC_STEP2_SIZE,
+                    .payload = step2_payload,
+                };
+                int n = container_serialize(&kx_ctrl, resp_buf, sizeof(resp_buf));
+                if (n > 0) {
+                    send_with_retry(resp_buf, (size_t)n);
+                }
+
+            } else if (step == BLERPC_KEY_EXCHANGE_STEP3 && hdr.payload_len >= BLERPC_STEP3_SIZE) {
+                /* Process step 3 and produce step 4 + session */
+                uint8_t step4_payload[BLERPC_STEP4_SIZE];
+                if (blerpc_peripheral_kx_process_step3(&peripheral_kx, hdr.payload,
+                                                        hdr.payload_len, step4_payload,
+                                                        &crypto_session) != 0) {
+                    LOG_ERR("Key exchange step 3 processing failed");
+                    return len;
+                }
+
+                uint8_t resp_buf[BLERPC_STEP4_SIZE + CONTAINER_CONTROL_HEADER_SIZE];
+                struct container_header kx_ctrl = {
+                    .transaction_id = hdr.transaction_id,
+                    .sequence_number = 0,
+                    .type = CONTAINER_TYPE_CONTROL,
+                    .control_cmd = CONTROL_CMD_KEY_EXCHANGE,
+                    .payload_len = BLERPC_STEP4_SIZE,
+                    .payload = step4_payload,
+                };
+                int n = container_serialize(&kx_ctrl, resp_buf, sizeof(resp_buf));
+                if (n > 0) {
+                    send_with_retry(resp_buf, (size_t)n);
+                }
+
+                encryption_active = true;
+                LOG_INF("E2E encryption established");
+            }
+#endif /* CONFIG_BLERPC_ENCRYPTION */
         }
         return len;
     }
@@ -322,8 +488,26 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
     if (rc == 1) {
         /* Assembly complete — process via work queue to free BT RX thread */
         req_work.transaction_id = hdr.transaction_id;
-        req_work.len = assembler.total_length;
-        memcpy(req_work.data, assembler.buf, assembler.total_length);
+#ifdef CONFIG_BLERPC_ENCRYPTION
+        if (encryption_active) {
+            /* Decrypt assembled payload (static to avoid stack overflow on BT RX thread) */
+            static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+            size_t decrypted_len;
+            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
+                                               assembler.buf, assembler.total_length) != 0) {
+                LOG_ERR("Decryption failed");
+                container_assembler_init(&assembler);
+                return len;
+            }
+            req_work.len = decrypted_len;
+            memcpy(req_work.data, decrypted, decrypted_len);
+        } else {
+#endif
+            req_work.len = assembler.total_length;
+            memcpy(req_work.data, assembler.buf, assembler.total_length);
+#ifdef CONFIG_BLERPC_ENCRYPTION
+        }
+#endif
         container_assembler_init(&assembler);
         k_work_submit_to_queue(&blerpc_work_q, &req_work.work);
     } else if (rc < 0) {
@@ -392,6 +576,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
         current_conn = NULL;
     }
     container_assembler_init(&assembler);
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    encryption_active = false;
+    memset(&crypto_session, 0, sizeof(crypto_session));
+#endif
 
     int err = ble_service_start_advertising();
     if (err) {
@@ -416,6 +604,12 @@ void ble_service_init(void)
                        K_PRIO_COOP(7), NULL);
     k_work_init(&req_work.work, request_work_handler);
     container_assembler_init(&assembler);
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    if (load_keys() != 0) {
+        LOG_WRN("Encryption keys not loaded — running without encryption");
+    }
+#endif
 }
 
 int ble_service_send_stream_end_p2c(uint8_t transaction_id)
@@ -449,4 +643,27 @@ uint8_t ble_service_next_transaction_id(void)
 void ble_service_submit_work(struct k_work *work)
 {
     k_work_submit_to_queue(&blerpc_work_q, work);
+}
+
+int ble_service_send_command_response(uint8_t transaction_id,
+                                      const uint8_t *cmd_data, size_t cmd_len)
+{
+    uint16_t mtu = ble_service_get_mtu();
+
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    if (encryption_active) {
+        static uint8_t enc_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
+        size_t enc_len;
+        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, &enc_len,
+                                           cmd_data, cmd_len) != 0) {
+            LOG_ERR("Stream response encryption failed");
+            return -1;
+        }
+        return container_split_and_send(transaction_id, enc_buf, enc_len,
+                                         mtu, container_send_cb, NULL);
+    }
+#endif
+
+    return container_split_and_send(transaction_id, cmd_data, cmd_len,
+                                     mtu, container_send_cb, NULL);
 }

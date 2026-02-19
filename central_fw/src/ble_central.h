@@ -1,6 +1,7 @@
 #ifndef BLERPC_BLE_CENTRAL_H
 #define BLERPC_BLE_CENTRAL_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -81,6 +82,35 @@ uint16_t ble_central_get_max_request_payload_size(void);
  * Get peripheral's max response payload size (0 if unknown).
  */
 uint16_t ble_central_get_max_response_payload_size(void);
+
+/**
+ * Get peripheral's capability flags (0 if unknown).
+ */
+uint16_t ble_central_get_capability_flags(void);
+
+/**
+ * Perform the 4-step key exchange handshake with the peripheral.
+ * Requires CONFIG_BLERPC_ENCRYPTION to be enabled.
+ * Must be called after capabilities have been received and peripheral
+ * advertises CAPABILITY_FLAG_ENCRYPTION_SUPPORTED.
+ * Blocks until key exchange completes or fails.
+ * @return 0 on success, negative on error
+ */
+int ble_central_perform_key_exchange(void);
+
+/**
+ * Check whether E2E encryption is currently active.
+ * @return true if encryption is active
+ */
+bool ble_central_is_encrypted(void);
+
+/**
+ * Encrypt a payload for sending to the peripheral.
+ * If encryption is not active, copies plaintext to out unchanged.
+ * @return 0 on success, negative on error
+ */
+int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len,
+                                 uint8_t *out, size_t out_size, size_t *out_len);
 
 #ifdef __cplusplus
 }

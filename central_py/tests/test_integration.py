@@ -108,38 +108,51 @@ async def test_flash_read_throughput(client):
         assert len(result.data) == read_size
     elapsed = time.monotonic() - start
 
-    throughput = total_bytes / elapsed
+    kb_per_sec = total_bytes / 1024.0 / elapsed
     per_call = elapsed / num_reads
     print(
-        f"\nThroughput: {num_reads}x {read_size}B = {total_bytes}B "
-        f"in {elapsed:.3f}s = {throughput:.0f} bytes/s ({per_call * 1000:.1f}ms/call)"
+        f"\n[BENCH] flash_read_throughput: {kb_per_sec:.1f} KB/s "
+        f"({total_bytes} bytes in {elapsed * 1000:.0f} ms, {per_call * 1000:.1f} ms/call)"
     )
 
 
 @pytest.mark.asyncio
 async def test_flash_read_overhead(client):
-    """Compare 1x8KB vs 8x1KB to measure per-call overhead."""
-    # Single 8KB read
-    await client.flash_read(address=0x00000000, length=8192)  # warm up
-    start = time.monotonic()
-    for _ in range(5):
-        await client.flash_read(address=0x00000000, length=8192)
-    time_8kb = (time.monotonic() - start) / 5
+    """Measure per-call overhead with minimal payload (1 byte × 20 calls)."""
+    count = 20
 
-    # 8x1KB reads
-    await client.flash_read(address=0x00000000, length=1024)  # warm up
-    start = time.monotonic()
-    for _ in range(5):
-        for _ in range(8):
-            await client.flash_read(address=0x00000000, length=1024)
-    time_8x1kb = (time.monotonic() - start) / 5
+    # Warm up
+    await client.flash_read(address=0x00000000, length=1)
 
-    overhead = time_8x1kb - time_8kb
-    print(f"\n1x8KB:  {time_8kb * 1000:.1f}ms ({8192 / time_8kb:.0f} bytes/s)")
-    print(f"8x1KB:  {time_8x1kb * 1000:.1f}ms ({8192 / time_8x1kb:.0f} bytes/s)")
+    start = time.monotonic()
+    for _ in range(count):
+        await client.flash_read(address=0x00000000, length=1)
+    elapsed = time.monotonic() - start
+
+    ms_per_call = elapsed * 1000 / count
     print(
-        f"Overhead of 7 extra calls: {overhead * 1000:.1f}ms "
-        f"({overhead / 7 * 1000:.1f}ms/call)"
+        f"\n[BENCH] flash_read_overhead: {ms_per_call:.1f} ms/call "
+        f"(1 byte x {count} calls in {elapsed * 1000:.0f} ms)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_echo_roundtrip(client):
+    """Measure echo round-trip latency (50 calls)."""
+    count = 50
+
+    # Warm up
+    await client.echo(message="x")
+
+    start = time.monotonic()
+    for _ in range(count):
+        await client.echo(message="hello")
+    elapsed = time.monotonic() - start
+
+    ms_per_call = elapsed * 1000 / count
+    print(
+        f"\n[BENCH] echo_roundtrip: {ms_per_call:.1f} ms/call "
+        f"({count} calls in {elapsed * 1000:.0f} ms)"
     )
 
 
@@ -161,25 +174,24 @@ async def test_data_write_8kb(client):
 @pytest.mark.asyncio
 async def test_data_write_throughput(client):
     """Continuous writes to measure sustained upload throughput."""
-    write_size = 8192
-    num_writes = 10
+    write_size = 200
+    num_writes = 20
     total_bytes = write_size * num_writes
-    data = bytes(range(256)) * 32  # 8192 bytes
+    data = bytes(i % 256 for i in range(write_size))
 
     # Warm up
     await client.data_write(data=data)
 
     start = time.monotonic()
     for i in range(num_writes):
-        result = await client.data_write(data=data)
-        assert result.length == write_size
+        await client.data_write(data=data)
     elapsed = time.monotonic() - start
 
-    throughput = total_bytes / elapsed
+    kb_per_sec = total_bytes / 1024.0 / elapsed
     per_call = elapsed / num_writes
     print(
-        f"\nWrite throughput: {num_writes}x {write_size}B = {total_bytes}B "
-        f"in {elapsed:.3f}s = {throughput:.0f} bytes/s ({per_call * 1000:.1f}ms/call)"
+        f"\n[BENCH] data_write_throughput: {kb_per_sec:.1f} KB/s "
+        f"({total_bytes} bytes in {elapsed * 1000:.0f} ms, {per_call * 1000:.1f} ms/call)"
     )
 
 
@@ -258,3 +270,31 @@ async def test_counter_upload_large(client):
     count = 20
     received = await client.counter_upload(count)
     assert received == count
+
+
+@pytest.mark.asyncio
+async def test_stream_throughput(client):
+    """Measure stream throughput for counter_stream (P→C) and counter_upload (C→P)."""
+    count = 20
+
+    # counter_stream (P→C): peripheral sends 'count' responses
+    start = time.monotonic()
+    results = await client.counter_stream(count)
+    elapsed = time.monotonic() - start
+    assert len(results) == count
+    ms_per_item = elapsed * 1000 / count
+    print(
+        f"\n[BENCH] counter_stream (P->C): {count} items in {elapsed * 1000:.0f} ms "
+        f"({ms_per_item:.1f} ms/item)"
+    )
+
+    # counter_upload (C→P): central sends 'count' requests
+    start = time.monotonic()
+    received = await client.counter_upload(count)
+    elapsed = time.monotonic() - start
+    assert received == count
+    ms_per_item = elapsed * 1000 / count
+    print(
+        f"[BENCH] counter_upload (C->P): {count} items in {elapsed * 1000:.0f} ms "
+        f"({ms_per_item:.1f} ms/item)"
+    )

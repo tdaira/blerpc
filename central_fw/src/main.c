@@ -9,6 +9,9 @@
 #include <blerpc_protocol/container.h>
 #include <blerpc_protocol/command.h>
 #include "blerpc.pb.h"
+#ifdef CONFIG_BLERPC_ENCRYPTION
+#include <mbedtls/platform.h>
+#endif
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -18,6 +21,15 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 /* Response buffer and synchronization */
 static uint8_t response_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 static size_t response_len;
+
+/* Shared encryption buffer (reused across sequential calls) */
+static uint8_t encrypt_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + 20];
+
+/* Shared work buffers (tests run sequentially, not concurrently) */
+static uint8_t shared_cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+static uint8_t shared_work_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+static uint8_t shared_decode_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
+
 static int rpc_error_code;
 static K_SEM_DEFINE(response_sem, 0, 1);
 
@@ -64,11 +76,10 @@ static int send_container(const uint8_t *data, size_t len, void *ctx)
 static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_len,
                     uint8_t *resp_pb, size_t resp_pb_size, size_t *resp_pb_len)
 {
-    static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     uint8_t name_len = (uint8_t)strlen(cmd_name);
 
     int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, req_pb,
-                                    (uint16_t)req_pb_len, cmd_buf, sizeof(cmd_buf));
+                                    (uint16_t)req_pb_len, shared_cmd_buf, sizeof(shared_cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return -1;
@@ -80,10 +91,18 @@ static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_l
         return -1;
     }
 
+    /* Encrypt if encryption is active */
+    size_t send_len;
+    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
+                                     encrypt_buf, sizeof(encrypt_buf), &send_len) != 0) {
+        LOG_ERR("Payload encryption failed");
+        return -1;
+    }
+
     uint8_t tid = next_transaction_id();
     uint16_t mtu = ble_central_get_mtu();
 
-    int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, send_container, NULL);
+    int rc = container_split_and_send(tid, encrypt_buf, send_len, mtu, send_container, NULL);
     if (rc < 0) {
         LOG_ERR("Container split/send failed: %d", rc);
         return -1;
@@ -134,7 +153,7 @@ static int test_echo(void)
 {
     LOG_INF("=== Echo Test ===");
 
-    const char *msg = "Hello from Central!";
+    static const char msg[] = "Hello from nRF54L15 central!";
 
     /* Encode request */
     static blerpc_EchoRequest req;
@@ -219,19 +238,17 @@ static int test_flash_read(uint32_t length)
     }
 
     /* RPC call */
-    static uint8_t fr_resp_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     size_t resp_len;
-    if (rpc_call("flash_read", req_buf, ostream.bytes_written, fr_resp_buf, sizeof(fr_resp_buf),
-                 &resp_len) != 0) {
+    if (rpc_call("flash_read", req_buf, ostream.bytes_written, shared_work_buf,
+                 sizeof(shared_work_buf), &resp_len) != 0) {
         LOG_ERR("FlashRead RPC failed");
         return -1;
     }
 
     /* Decode response */
-    static uint8_t data_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     struct flash_read_decode_ctx decode_ctx = {
-        .buf = data_buf,
-        .buf_size = sizeof(data_buf),
+        .buf = shared_decode_buf,
+        .buf_size = sizeof(shared_decode_buf),
         .decoded_len = 0,
     };
 
@@ -239,7 +256,7 @@ static int test_flash_read(uint32_t length)
     resp.data.funcs.decode = flash_data_decode_cb;
     resp.data.arg = &decode_ctx;
 
-    pb_istream_t istream = pb_istream_from_buffer(fr_resp_buf, resp_len);
+    pb_istream_t istream = pb_istream_from_buffer(shared_work_buf, resp_len);
     if (!pb_decode(&istream, blerpc_FlashReadResponse_fields, &resp)) {
         LOG_ERR("FlashRead response decode failed");
         return -1;
@@ -333,13 +350,13 @@ static int test_data_write(uint32_t length)
     }
 
     /* Pass 2: encode */
-    static uint8_t req_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
-    if (sizing.bytes_written > sizeof(req_buf)) {
-        LOG_ERR("DataWrite request too large: %zu > %zu", sizing.bytes_written, sizeof(req_buf));
+    if (sizing.bytes_written > sizeof(shared_work_buf)) {
+        LOG_ERR("DataWrite request too large: %zu > %zu", sizing.bytes_written,
+                sizeof(shared_work_buf));
         return -1;
     }
 
-    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
+    pb_ostream_t ostream = pb_ostream_from_buffer(shared_work_buf, sizeof(shared_work_buf));
     if (!pb_encode(&ostream, blerpc_DataWriteRequest_fields, &req)) {
         LOG_ERR("DataWrite request encode failed");
         return -1;
@@ -348,7 +365,8 @@ static int test_data_write(uint32_t length)
     /* RPC call */
     static uint8_t dw_resp_buf[blerpc_DataWriteResponse_size];
     size_t resp_len;
-    if (rpc_call("data_write", req_buf, ostream.bytes_written, dw_resp_buf, sizeof(dw_resp_buf),
+    if (rpc_call("data_write", shared_work_buf, ostream.bytes_written, dw_resp_buf,
+                 sizeof(dw_resp_buf),
                  &resp_len) != 0) {
         LOG_ERR("DataWrite RPC failed");
         return -1;
@@ -434,17 +452,27 @@ static int test_counter_stream(void)
     }
 
     /* Send request (use rpc_call's sending part manually) */
-    static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
     int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14, req_buf,
-                                    (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
+                                    (uint16_t)ostream.bytes_written, shared_cmd_buf,
+                                    sizeof(shared_cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return -1;
     }
 
+    /* Encrypt if encryption is active */
+    size_t cs_send_len;
+    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
+                                     encrypt_buf, sizeof(encrypt_buf),
+                                     &cs_send_len) != 0) {
+        LOG_ERR("CounterStream payload encryption failed");
+        return -1;
+    }
+
     uint8_t tid = next_transaction_id();
     uint16_t mtu = ble_central_get_mtu();
-    int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, send_container, NULL);
+    int rc = container_split_and_send(tid, encrypt_buf, cs_send_len, mtu,
+                                       send_container, NULL);
     if (rc < 0) {
         LOG_ERR("Container split/send failed: %d", rc);
         return -1;
@@ -524,17 +552,27 @@ static int test_counter_upload(void)
             return -1;
         }
 
-        static uint8_t cmd_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
         int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_upload", 14, req_buf,
-                                        (uint16_t)ostream.bytes_written, cmd_buf, sizeof(cmd_buf));
+                                        (uint16_t)ostream.bytes_written, shared_cmd_buf,
+                                        sizeof(shared_cmd_buf));
         if (cmd_len < 0) {
             LOG_ERR("Command serialize failed at %u", i);
             return -1;
         }
 
+        /* Encrypt if encryption is active */
+        size_t cu_send_len;
+        if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len,
+                                         encrypt_buf, sizeof(encrypt_buf),
+                                         &cu_send_len) != 0) {
+            LOG_ERR("CounterUpload payload encryption failed at %u", i);
+            return -1;
+        }
+
         uint8_t tid = next_transaction_id();
         uint16_t mtu = ble_central_get_mtu();
-        int rc = container_split_and_send(tid, cmd_buf, (size_t)cmd_len, mtu, send_container, NULL);
+        int rc = container_split_and_send(tid, encrypt_buf, cu_send_len, mtu,
+                                           send_container, NULL);
         if (rc < 0) {
             LOG_ERR("Container split/send failed at %u: %d", i, rc);
             return -1;
@@ -593,6 +631,12 @@ int main(void)
 
     LOG_INF("blerpc central starting");
 
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    /* mbedTLS on NCS defaults mbedtls_calloc to a stub returning NULL.
+     * Use Zephyr's k_calloc/k_free backed by CONFIG_HEAP_MEM_POOL_SIZE. */
+    mbedtls_platform_set_calloc_free(k_calloc, k_free);
+#endif
+
     err = bt_enable(NULL);
     if (err) {
         LOG_ERR("Bluetooth init failed (err %d)", err);
@@ -618,6 +662,18 @@ int main(void)
         LOG_INF("Peripheral capabilities: max_request=%u, max_response=%u",
                 ble_central_get_max_request_payload_size(),
                 ble_central_get_max_response_payload_size());
+    }
+
+    /* Perform key exchange if peripheral supports encryption */
+    uint16_t cap_flags = ble_central_get_capability_flags();
+    if (cap_flags & CAPABILITY_FLAG_ENCRYPTION_SUPPORTED) {
+        LOG_INF("Peripheral supports encryption, performing key exchange...");
+        err = ble_central_perform_key_exchange();
+        if (err) {
+            LOG_WRN("Key exchange failed (err %d), continuing without encryption", err);
+        } else {
+            LOG_INF("Encryption active: %s", ble_central_is_encrypted() ? "yes" : "no");
+        }
     }
 
     /* Allow subscription to settle */

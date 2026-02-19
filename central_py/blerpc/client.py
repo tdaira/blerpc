@@ -9,15 +9,18 @@ from collections.abc import AsyncIterator
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
     BLERPC_ERROR_RESPONSE_TOO_LARGE,
+    CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
     Container,
     ContainerAssembler,
     ContainerSplitter,
     ContainerType,
     ControlCmd,
     make_capabilities_request,
+    make_key_exchange,
     make_stream_end_c2p,
     make_timeout_request,
 )
+from blerpc_protocol.crypto import BlerpcCryptoSession, CentralKeyExchange
 
 from .generated import blerpc_pb2
 from .generated.generated_client import GeneratedClientMixin
@@ -44,13 +47,17 @@ class ResponseTooLargeError(Exception):
 class BlerpcClient(GeneratedClientMixin):
     """High-level RPC client that communicates over BLE."""
 
-    def __init__(self):
+    def __init__(self, known_keys_path: str | None = None):
         self._transport = BleTransport()
         self._splitter: ContainerSplitter | None = None
         self._assembler = ContainerAssembler()
         self._timeout_s = 0.1  # Default 100ms
         self._max_request_payload_size: int | None = None
         self._max_response_payload_size: int | None = None
+
+        # Encryption state
+        self._session: BlerpcCryptoSession | None = None
+        self._known_keys_path = known_keys_path
 
     @property
     def mtu(self) -> int:
@@ -113,7 +120,7 @@ class BlerpcClient(GeneratedClientMixin):
             )
 
     async def _request_capabilities(self) -> None:
-        """Request capabilities from peripheral."""
+        """Request capabilities from peripheral (6-byte format)."""
         tid = self._splitter.next_transaction_id()
         req = make_capabilities_request(transaction_id=tid)
         await self._transport.write(req.serialize())
@@ -122,10 +129,11 @@ class BlerpcClient(GeneratedClientMixin):
         if (
             resp.container_type == ContainerType.CONTROL
             and resp.control_cmd == ControlCmd.CAPABILITIES
-            and len(resp.payload) == 4
+            and len(resp.payload) >= 6
         ):
             max_req = int.from_bytes(resp.payload[0:2], "little")
             max_resp = int.from_bytes(resp.payload[2:4], "little")
+            flags = int.from_bytes(resp.payload[4:6], "little")
             if max_req == 0 or max_resp == 0:
                 logger.warning(
                     "Peripheral reported zero capability:"
@@ -136,10 +144,15 @@ class BlerpcClient(GeneratedClientMixin):
             self._max_request_payload_size = max_req
             self._max_response_payload_size = max_resp
             logger.info(
-                "Peripheral capabilities: max_request=%d, max_response=%d",
+                "Peripheral capabilities: max_request=%d, max_response=%d, flags=0x%04x",
                 self._max_request_payload_size,
                 self._max_response_payload_size,
+                flags,
             )
+
+            # Initiate key exchange if peripheral supports encryption
+            if flags & CAPABILITY_FLAG_ENCRYPTION_SUPPORTED:
+                await self._perform_key_exchange()
         else:
             logger.warning(
                 "Unexpected capabilities response: type=%s, cmd=%s, payload_len=%d",
@@ -147,6 +160,77 @@ class BlerpcClient(GeneratedClientMixin):
                 resp.control_cmd,
                 len(resp.payload),
             )
+
+    async def _perform_key_exchange(self) -> None:
+        """Perform the 4-step key exchange handshake."""
+        kx = CentralKeyExchange()
+
+        # Step 1: Send central's ephemeral public key
+        step1 = kx.start()
+        tid = self._splitter.next_transaction_id()
+        req = make_key_exchange(transaction_id=tid, payload=step1)
+        await self._transport.write(req.serialize())
+
+        # Step 2: Receive peripheral's response
+        data = await self._transport.read_notify(timeout=2.0)
+        resp = Container.deserialize(data)
+        if (
+            resp.container_type != ContainerType.CONTROL
+            or resp.control_cmd != ControlCmd.KEY_EXCHANGE
+        ):
+            logger.error("Expected KEY_EXCHANGE step 2, got something else")
+            return
+
+        # Build TOFU verify callback if configured
+        verify_cb = None
+        if self._known_keys_path:
+            from .known_keys import check_or_store_key
+
+            def verify_cb(ed25519_pub: bytes) -> bool:
+                return check_or_store_key(
+                    self._known_keys_path, self._transport.address, ed25519_pub
+                )
+
+        try:
+            step3 = kx.process_step2(resp.payload, verify_key_cb=verify_cb)
+        except ValueError as e:
+            logger.error("Key exchange step 2 failed: %s", e)
+            return
+
+        # Step 3: Send encrypted confirmation
+        tid = self._splitter.next_transaction_id()
+        req = make_key_exchange(transaction_id=tid, payload=step3)
+        await self._transport.write(req.serialize())
+
+        # Step 4: Receive peripheral's confirmation
+        data = await self._transport.read_notify(timeout=2.0)
+        resp = Container.deserialize(data)
+        if (
+            resp.container_type != ContainerType.CONTROL
+            or resp.control_cmd != ControlCmd.KEY_EXCHANGE
+        ):
+            logger.error("Expected KEY_EXCHANGE step 4, got something else")
+            return
+
+        try:
+            self._session = kx.finish(resp.payload)
+        except ValueError as e:
+            logger.error("Key exchange step 4 failed: %s", e)
+            return
+
+        logger.info("E2E encryption established")
+
+    def _encrypt_payload(self, payload: bytes) -> bytes:
+        """Encrypt payload if encryption is active."""
+        if self._session is None:
+            return payload
+        return self._session.encrypt(payload)
+
+    def _decrypt_payload(self, payload: bytes) -> bytes:
+        """Decrypt payload if encryption is active."""
+        if self._session is None:
+            return payload
+        return self._session.decrypt(payload)
 
     async def _call(self, cmd_name: str, request_data: bytes) -> bytes:
         """Execute an RPC call and return response data."""
@@ -167,8 +251,9 @@ class BlerpcClient(GeneratedClientMixin):
         ):
             raise PayloadTooLargeError(len(payload), self._max_request_payload_size)
 
-        # Split into containers and send
-        containers = self._splitter.split(payload)
+        # Encrypt if active, then split into containers and send
+        send_payload = self._encrypt_payload(payload)
+        containers = self._splitter.split(send_payload)
         for c in containers:
             await self._transport.write(c.serialize())
 
@@ -194,6 +279,9 @@ class BlerpcClient(GeneratedClientMixin):
             result = self._assembler.feed(container)
             if result is not None:
                 break
+
+        # Decrypt if active
+        result = self._decrypt_payload(result)
 
         # Decode command response
         resp = CommandPacket.deserialize(result)
@@ -231,7 +319,8 @@ class BlerpcClient(GeneratedClientMixin):
         ):
             raise PayloadTooLargeError(len(payload), self._max_request_payload_size)
 
-        containers = self._splitter.split(payload)
+        send_payload = self._encrypt_payload(payload)
+        containers = self._splitter.split(send_payload)
         for c in containers:
             await self._transport.write(c.serialize())
 
@@ -258,6 +347,7 @@ class BlerpcClient(GeneratedClientMixin):
 
             result = self._assembler.feed(container)
             if result is not None:
+                result = self._decrypt_payload(result)
                 resp = CommandPacket.deserialize(result)
                 if resp.cmd_type != CommandType.RESPONSE:
                     raise RuntimeError(f"Expected response, got type={resp.cmd_type}")
@@ -286,7 +376,8 @@ class BlerpcClient(GeneratedClientMixin):
                 data=msg_data,
             )
             payload = cmd.serialize()
-            containers = self._splitter.split(payload)
+            send_payload = self._encrypt_payload(payload)
+            containers = self._splitter.split(send_payload)
             for c in containers:
                 await self._transport.write(c.serialize())
 
@@ -318,6 +409,7 @@ class BlerpcClient(GeneratedClientMixin):
             if result is not None:
                 break
 
+        result = self._decrypt_payload(result)
         resp = CommandPacket.deserialize(result)
         if resp.cmd_type != CommandType.RESPONSE:
             raise RuntimeError(f"Expected response, got type={resp.cmd_type}")
