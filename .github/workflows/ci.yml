@@ -35,7 +35,7 @@ jobs:
           pip install git+https://github.com/tdaira/blerpc-protocol.git
       - name: Run unit tests
         working-directory: central_py
-        run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
+        run: python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py tests/test_encryption.py -v
 
   c-lint:
     name: C Lint & Format
