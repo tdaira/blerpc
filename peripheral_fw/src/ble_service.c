@@ -630,8 +630,8 @@ int ble_service_send_command_response(uint8_t transaction_id, const uint8_t *cmd
         static uint8_t
             enc_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
         size_t enc_len;
-        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, sizeof(enc_buf),
-                                          &enc_len, cmd_data, cmd_len) != 0) {
+        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, sizeof(enc_buf), &enc_len,
+                                          cmd_data, cmd_len) != 0) {
             LOG_ERR("Stream response encryption failed");
             return -1;
         }
