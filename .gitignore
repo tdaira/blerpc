@@ -28,3 +28,6 @@ local.properties
 *.xcworkspace/
 xcuserdata/
 DerivedData/
+
+# Encryption keys (NEVER commit private keys)
+keys.conf

@@ -97,7 +97,6 @@ HANDLERS["counter_upload"] = handle_counter_upload
 class BlerpcPeripheral:
     def __init__(
         self,
-        x25519_private_key_hex: str | None = None,
         ed25519_private_key_hex: str | None = None,
     ):
         self.server: BlessServer | None = None
@@ -113,16 +112,14 @@ class BlerpcPeripheral:
         self._session: BlerpcCryptoSession | None = None
         self._kx: PeripheralKeyExchange | None = None
 
-        if x25519_private_key_hex and ed25519_private_key_hex:
-            x25519_priv_bytes = bytes.fromhex(x25519_private_key_hex)
+        if ed25519_private_key_hex:
             ed25519_priv_bytes = bytes.fromhex(ed25519_private_key_hex)
-            x25519_privkey = BlerpcCrypto.x25519_private_from_bytes(x25519_priv_bytes)
             ed25519_privkey = BlerpcCrypto.ed25519_private_from_bytes(
                 ed25519_priv_bytes
             )
-            self._kx = PeripheralKeyExchange(x25519_privkey, ed25519_privkey)
+            self._kx = PeripheralKeyExchange(ed25519_privkey)
             self._encryption_supported = True
-            logger.info("Encryption keys loaded")
+            logger.info("Encryption key loaded (X25519 generated per session)")
 
     async def start(self):
         self._loop = asyncio.get_event_loop()
@@ -375,10 +372,8 @@ class BlerpcPeripheral:
 
 
 async def main():
-    x25519_key = os.environ.get("BLERPC_X25519_KEY")
     ed25519_key = os.environ.get("BLERPC_ED25519_KEY")
     peripheral = BlerpcPeripheral(
-        x25519_private_key_hex=x25519_key,
         ed25519_private_key_hex=ed25519_key,
     )
     await peripheral.start()

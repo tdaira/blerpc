@@ -307,8 +307,9 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
         if (encryption_active) {
             static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
             size_t decrypted_len;
-            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
-                                              assembler.buf, assembler.total_length) != 0) {
+            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, sizeof(decrypted),
+                                              &decrypted_len, assembler.buf,
+                                              assembler.total_length) != 0) {
                 LOG_ERR("Response decryption failed");
                 container_assembler_init(&assembler);
                 return BT_GATT_ITER_CONTINUE;
@@ -468,7 +469,7 @@ int ble_central_encrypt_payload(const uint8_t *plaintext, size_t plaintext_len, 
 {
 #ifdef CONFIG_BLERPC_ENCRYPTION
     if (encryption_active) {
-        return blerpc_crypto_session_encrypt(&crypto_session, out, out_len, plaintext,
+        return blerpc_crypto_session_encrypt(&crypto_session, out, out_size, out_len, plaintext,
                                              plaintext_len);
     }
 #endif

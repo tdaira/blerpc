@@ -1,0 +1,8 @@
+# blerpc Peripheral Encryption Keys
+# Copy this file to keys.conf and replace with your actual keys.
+# keys.conf is git-ignored and must NEVER be committed.
+#
+# Generate a random Ed25519 seed (32 bytes = 64 hex chars):
+#   python3 -c "import os; print(os.urandom(32).hex())"
+
+CONFIG_BLERPC_ED25519_PRIVATE_KEY="0000000000000000000000000000000000000000000000000000000000000000"
