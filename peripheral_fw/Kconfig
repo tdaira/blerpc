@@ -30,14 +30,8 @@ config BLERPC_ENCRYPTION
 	depends on BLERPC_PROTOCOL_CRYPTO
 	help
 	  Enable E2E encryption on the peripheral.
-	  Requires X25519 and Ed25519 private keys.
-
-config BLERPC_X25519_PRIVATE_KEY
-	string "X25519 private key (hex, 64 chars)"
-	default ""
-	depends on BLERPC_ENCRYPTION
-	help
-	  Peripheral X25519 private key as hex string (32 bytes = 64 hex chars).
+	  X25519 keypair is generated ephemerally per session for forward secrecy.
+	  Requires Ed25519 private key for authentication.
 
 config BLERPC_ED25519_PRIVATE_KEY
 	string "Ed25519 private key seed (hex, 64 chars)"
@@ -45,3 +39,5 @@ config BLERPC_ED25519_PRIVATE_KEY
 	depends on BLERPC_ENCRYPTION
 	help
 	  Peripheral Ed25519 private key seed as hex string (32 bytes = 64 hex chars).
+	  This key is used for device authentication (signing).
+	  Store this in a git-ignored overlay file (e.g. keys.conf), not prj.conf.

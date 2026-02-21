@@ -11,6 +11,7 @@
 
 #ifdef CONFIG_BLERPC_ENCRYPTION
 #include <blerpc_protocol/crypto.h>
+#include <mbedtls/platform_util.h>
 #include <psa/crypto.h>
 #endif
 
@@ -54,29 +55,27 @@ static int load_keys(void)
         return -1;
     }
 
-    const char *x25519_hex = CONFIG_BLERPC_X25519_PRIVATE_KEY;
     const char *ed25519_hex = CONFIG_BLERPC_ED25519_PRIVATE_KEY;
 
-    if (strlen(x25519_hex) != 64 || strlen(ed25519_hex) != 64) {
-        LOG_ERR("Encryption keys not configured (must be 64 hex chars each)");
+    if (strlen(ed25519_hex) != 64) {
+        LOG_ERR("Ed25519 key not configured (must be 64 hex chars)");
         return -1;
     }
 
-    uint8_t x25519_privkey[BLERPC_X25519_KEY_SIZE];
     uint8_t ed25519_privkey[32];
 
-    if (hex_to_bytes(x25519_hex, x25519_privkey, 32) != 0 ||
-        hex_to_bytes(ed25519_hex, ed25519_privkey, 32) != 0) {
-        LOG_ERR("Invalid hex in encryption keys");
+    if (hex_to_bytes(ed25519_hex, ed25519_privkey, 32) != 0) {
+        LOG_ERR("Invalid hex in Ed25519 key");
         return -1;
     }
 
-    /* Initialize peripheral key exchange (derives public keys internally) */
-    if (blerpc_peripheral_kx_init(&peripheral_kx, x25519_privkey, ed25519_privkey) != 0) {
+    /* Initialize peripheral key exchange (X25519 keypair generated per session) */
+    if (blerpc_peripheral_kx_init(&peripheral_kx, ed25519_privkey) != 0) {
         LOG_ERR("Failed to initialize peripheral key exchange");
         return -1;
     }
 
+    mbedtls_platform_zeroize(ed25519_privkey, sizeof(ed25519_privkey));
     LOG_INF("Encryption keys loaded");
     return 0;
 }
@@ -302,8 +301,8 @@ static void process_request(const uint8_t *data, size_t len, uint8_t transaction
         static uint8_t
             encrypted_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
         size_t encrypted_len;
-        if (blerpc_crypto_session_encrypt(&crypto_session, encrypted_buf, &encrypted_len,
-                                          cmd_plain_buf, total_length) != 0) {
+        if (blerpc_crypto_session_encrypt(&crypto_session, encrypted_buf, sizeof(encrypted_buf),
+                                          &encrypted_len, cmd_plain_buf, total_length) != 0) {
             LOG_ERR("Response encryption failed");
             return;
         }
@@ -468,8 +467,9 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             /* Decrypt assembled payload (static to avoid stack overflow on BT RX thread) */
             static uint8_t decrypted[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
             size_t decrypted_len;
-            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, &decrypted_len,
-                                              assembler.buf, assembler.total_length) != 0) {
+            if (blerpc_crypto_session_decrypt(&crypto_session, decrypted, sizeof(decrypted),
+                                              &decrypted_len, assembler.buf,
+                                              assembler.total_length) != 0) {
                 LOG_ERR("Decryption failed");
                 container_assembler_init(&assembler);
                 return len;
@@ -630,8 +630,8 @@ int ble_service_send_command_response(uint8_t transaction_id, const uint8_t *cmd
         static uint8_t
             enc_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE + BLERPC_ENCRYPTED_OVERHEAD];
         size_t enc_len;
-        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, &enc_len, cmd_data, cmd_len) !=
-            0) {
+        if (blerpc_crypto_session_encrypt(&crypto_session, enc_buf, sizeof(enc_buf), &enc_len,
+                                          cmd_data, cmd_len) != 0) {
             LOG_ERR("Stream response encryption failed");
             return -1;
         }
