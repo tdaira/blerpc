@@ -96,6 +96,20 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
         return -1;
     }
 
+    /* Validate flash read address bounds */
+    struct flash_pages_info page_info;
+    size_t page_count = flash_get_page_count(flash_dev);
+    if (page_count > 0 && flash_get_page_info_by_idx(flash_dev, page_count - 1, &page_info) == 0) {
+        size_t flash_size = page_info.start_offset + page_info.size;
+        /* Check for integer overflow and out-of-bounds */
+        if (req.length > 0 && ((uint64_t)req.address + req.length > flash_size ||
+                               req.address + req.length < req.address)) {
+            LOG_ERR("FlashRead: address 0x%08x + length %u out of bounds (flash_size=%zu)",
+                    req.address, req.length, flash_size);
+            return -1;
+        }
+    }
+
     struct flash_encode_ctx ctx = {
         .flash_dev = flash_dev,
         .address = req.address,

@@ -111,12 +111,15 @@ class BlerpcPeripheral:
         self._encryption_supported = False
         self._session: BlerpcCryptoSession | None = None
         self._kx: PeripheralKeyExchange | None = None
+        self._ed25519_privkey = None  # Store for KX recreation on disconnect
+        self._connected = False
 
         if ed25519_private_key_hex:
             ed25519_priv_bytes = bytes.fromhex(ed25519_private_key_hex)
             ed25519_privkey = BlerpcCrypto.ed25519_private_from_bytes(
                 ed25519_priv_bytes
             )
+            self._ed25519_privkey = ed25519_privkey
             self._kx = PeripheralKeyExchange(ed25519_privkey)
             self._encryption_supported = True
             logger.info("Encryption key loaded (X25519 generated per session)")
@@ -146,13 +149,34 @@ class BlerpcPeripheral:
         await self.server.start()
         logger.info("Advertising as 'blerpc' — waiting for connections...")
 
+    def _reset_connection_state(self):
+        """Reset session state for new connection."""
+        logger.info("Resetting connection state")
+        self._session = None
+        self._upload_count = 0
+        self.assembler = ContainerAssembler()
+        if self._ed25519_privkey is not None:
+            self._kx = PeripheralKeyExchange(self._ed25519_privkey)
+
     def _on_write(
         self, characteristic: BlessGATTCharacteristic, value: bytearray, **kwargs
     ):
         data = bytes(value)
         logger.debug("Write received: %d bytes", len(data))
 
+        # Detect new connection by tracking connection state.
+        # bless doesn't provide disconnect callbacks, so we detect new
+        # connections by watching for a CAPABILITIES request (always the first
+        # thing a central sends). If we were previously connected and get a new
+        # CAPABILITIES, reset state.
         container = Container.deserialize(data)
+        if (
+            container.container_type == ContainerType.CONTROL
+            and container.control_cmd == ControlCmd.CAPABILITIES
+            and self._connected
+        ):
+            self._reset_connection_state()
+        self._connected = True
 
         # Handle control containers
         if container.container_type == ContainerType.CONTROL:
@@ -211,6 +235,11 @@ class BlerpcPeripheral:
             logger.warning("KEY_EXCHANGE received but encryption not supported")
             return
 
+        # Block KX re-initiation when session already exists
+        if self._session is not None:
+            logger.warning("KEY_EXCHANGE rejected: encryption already active")
+            return
+
         try:
             response, session = self._kx.handle_step(container.payload)
         except ValueError as e:
@@ -244,6 +273,12 @@ class BlerpcPeripheral:
             except RuntimeError as e:
                 logger.error("Decryption/replay error: %s", e)
                 return
+        elif self._encryption_supported:
+            # Reject unencrypted data when encryption is supported
+            logger.warning(
+                "Rejecting unencrypted payload (encryption supported but not active)"
+            )
+            return
 
         cmd = CommandPacket.deserialize(payload)
         if cmd.cmd_type != CommandType.REQUEST:
