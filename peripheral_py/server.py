@@ -105,6 +105,7 @@ class BlerpcPeripheral:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._send_queue: list[tuple[bytes, int]] = []
         self._send_lock = threading.Lock()
+        self._state_lock = threading.Lock()
         self._upload_count = 0
 
         # Encryption state
@@ -152,11 +153,12 @@ class BlerpcPeripheral:
     def _reset_connection_state(self):
         """Reset session state for new connection."""
         logger.info("Resetting connection state")
-        self._session = None
-        self._upload_count = 0
-        self.assembler = ContainerAssembler()
-        if self._ed25519_privkey is not None:
-            self._kx = PeripheralKeyExchange(self._ed25519_privkey)
+        with self._state_lock:
+            self._session = None
+            self._upload_count = 0
+            self.assembler = ContainerAssembler()
+            if self._ed25519_privkey is not None:
+                self._kx = PeripheralKeyExchange(self._ed25519_privkey)
 
     def _on_write(
         self, characteristic: BlessGATTCharacteristic, value: bytearray, **kwargs
@@ -256,7 +258,8 @@ class BlerpcPeripheral:
         self._send_container_sync(resp)
 
         if session is not None:
-            self._session = session
+            with self._state_lock:
+                self._session = session
             logger.info("E2E encryption established")
 
     def _process_request_thread(self, payload: bytes, transaction_id: int):
@@ -266,10 +269,14 @@ class BlerpcPeripheral:
             logger.exception("Error processing request")
 
     def _process_request(self, payload: bytes, transaction_id: int):
+        # Snapshot session under lock for thread safety
+        with self._state_lock:
+            session = self._session
+
         # Decrypt if encryption is active
-        if self._session is not None:
+        if session is not None:
             try:
-                payload = self._session.decrypt(payload)
+                payload = session.decrypt(payload)
             except RuntimeError as e:
                 logger.error("Decryption/replay error: %s", e)
                 return
@@ -299,7 +306,8 @@ class BlerpcPeripheral:
 
         # counter_upload returns None (no individual response)
         if resp_data is None:
-            self._upload_count += 1
+            with self._state_lock:
+                self._upload_count += 1
             return
 
         resp_cmd = CommandPacket(
@@ -326,7 +334,10 @@ class BlerpcPeripheral:
             return
 
         send_payload = self._maybe_encrypt(resp_payload)
-        containers = self.splitter.split(send_payload, transaction_id=transaction_id)
+        with self._state_lock:
+            containers = self.splitter.split(
+                send_payload, transaction_id=transaction_id
+            )
         logger.info(
             "Sending %d containers (%d bytes payload)",
             len(containers),
@@ -341,11 +352,21 @@ class BlerpcPeripheral:
             return payload
         return self._session.encrypt(payload)
 
+    _MAX_COUNTER_STREAM_COUNT = 10000
+
     def _handle_counter_stream(self, req_data: bytes):
         """Handle counter_stream: send N responses + STREAM_END_P2C."""
         req = blerpc_pb2.CounterStreamRequest()
         req.ParseFromString(req_data)
         logger.info("CounterStream: count=%d", req.count)
+
+        if req.count > self._MAX_COUNTER_STREAM_COUNT:
+            logger.error(
+                "CounterStream: count %d exceeds max %d",
+                req.count,
+                self._MAX_COUNTER_STREAM_COUNT,
+            )
+            return
 
         for i in range(req.count):
             resp = blerpc_pb2.CounterStreamResponse(seq=i, value=i * 10)
@@ -356,21 +377,24 @@ class BlerpcPeripheral:
             )
             resp_payload = resp_cmd.serialize()
             send_payload = self._maybe_encrypt(resp_payload)
-            tid = self.splitter.next_transaction_id()
-            containers = self.splitter.split(send_payload, transaction_id=tid)
+            with self._state_lock:
+                tid = self.splitter.next_transaction_id()
+                containers = self.splitter.split(send_payload, transaction_id=tid)
             for c in containers:
                 self._send_container_sync(c)
 
         # Send STREAM_END_P2C
-        tid = self.splitter.next_transaction_id()
+        with self._state_lock:
+            tid = self.splitter.next_transaction_id()
         stream_end = make_stream_end_p2c(transaction_id=tid)
         self._send_container_sync(stream_end)
         logger.info("CounterStream: sent %d responses + STREAM_END_P2C", req.count)
 
     def _handle_stream_end_c2p(self, transaction_id: int):
         """Handle STREAM_END_C2P: send final counter_upload response."""
-        count = self._upload_count
-        self._upload_count = 0
+        with self._state_lock:
+            count = self._upload_count
+            self._upload_count = 0
         logger.info(
             "STREAM_END_C2P: sending counter_upload response, received_count=%d",
             count,
@@ -384,8 +408,9 @@ class BlerpcPeripheral:
         )
         resp_payload = resp_cmd.serialize()
         send_payload = self._maybe_encrypt(resp_payload)
-        tid = self.splitter.next_transaction_id()
-        containers = self.splitter.split(send_payload, transaction_id=tid)
+        with self._state_lock:
+            tid = self.splitter.next_transaction_id()
+            containers = self.splitter.split(send_payload, transaction_id=tid)
         for c in containers:
             self._send_container_sync(c)
 

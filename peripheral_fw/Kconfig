@@ -24,6 +24,25 @@ config BLERPC_WORK_STACK_SIZE
 	help
 	  Stack size for the blerpc request processing work queue.
 
+config BLERPC_MAX_FLASH_READ_ADDRESS
+	int "Maximum allowed flash read address"
+	default 0
+	help
+	  Maximum address (exclusive) allowed for BLE flash_read requests.
+	  Set to 0 to allow reading up to the end of flash (limited by
+	  hardware flash size). Set to a specific address to restrict
+	  reads to a safe region (e.g. application data area only).
+
+config BLERPC_DOUBLE_BUFFER
+	bool "Double-buffer request work queue"
+	default n
+	help
+	  When enabled, uses two request_work buffers instead of one,
+	  allowing a new request to be received while the previous one
+	  is still being processed. This costs ~12KB extra RAM.
+	  When disabled, a BUSY error is sent if a request arrives
+	  while the previous one is still being processed.
+
 config BLERPC_ENCRYPTION
 	bool "Enable E2E encryption"
 	default n

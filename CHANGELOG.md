@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security (Audit Round 2)
+- **C-1**: `require_encryption` parameter (default: True) in Python/Kotlin/Swift clients prevents silent encryption downgrade
+- **C-2**: Race condition fix in firmware `req_work` — busy check before data write, optional double-buffer (`CONFIG_BLERPC_DOUBLE_BUFFER`)
+- **H-1**: Kotlin crypto counters changed from `Int` to `Long` (full unsigned 32-bit range)
+- **H-2**: `CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS` Kconfig option restricts flash read range
+- **H-3**: `counter_stream` count capped at 10,000 in firmware and Python peripheral
+- **H-4**: `memset` replaced with `mbedtls_platform_zeroize` for key material in C crypto and firmware
+- **H-5**: `known_keys.json` created with 0600 permissions
+- **H-6**: Thread safety locks in Python peripheral for session, upload_count, and splitter
+- **H-7**: `@Volatile` on Android BLE continuations; serial `DispatchQueue` for iOS CoreBluetooth
+- **H-8**: `permissions: { contents: read }` added to all CI workflows
+- New `BLERPC_ERROR_BUSY` (0x02) error code in all protocol libraries
+
+### Changed
+- Protocol libraries updated to 0.6.0
+
+## [0.5.0] - 2026-02-22
+
 ### Added
 - E2E encryption: X25519 ECDH + Ed25519 signatures + AES-128-GCM + HKDF-SHA256
 - Ephemeral X25519 keypairs per connection for forward secrecy

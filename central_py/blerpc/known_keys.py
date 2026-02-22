@@ -55,7 +55,8 @@ def _load_known_keys(path: str) -> dict[str, str]:
 
 
 def _save_known_keys(path: str, known: dict[str, str]) -> None:
-    """Save known keys to JSON file."""
+    """Save known keys to JSON file with restricted permissions (0600)."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w") as f:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(known, f, indent=2)

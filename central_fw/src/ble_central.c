@@ -3,6 +3,7 @@
 
 #ifdef CONFIG_BLERPC_ENCRYPTION
 #include <blerpc_protocol/crypto.h>
+#include <mbedtls/platform_util.h>
 #include <psa/crypto.h>
 #include <string.h>
 #endif
@@ -361,7 +362,7 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
     }
 #ifdef CONFIG_BLERPC_ENCRYPTION
     encryption_active = false;
-    memset(&crypto_session, 0, sizeof(crypto_session));
+    mbedtls_platform_zeroize(&crypto_session, sizeof(crypto_session));
 #endif
 }
 

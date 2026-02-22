@@ -67,7 +67,7 @@ class MockTransport:
 
 def make_client(transport: MockTransport) -> BlerpcClient:
     """Create a BlerpcClient wired to a mock transport."""
-    client = BlerpcClient()
+    client = BlerpcClient(require_encryption=False)
     client._transport = transport
     client._splitter = ContainerSplitter(mtu=transport.mtu)
     client._timeout_s = 2.0

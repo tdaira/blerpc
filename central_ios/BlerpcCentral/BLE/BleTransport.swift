@@ -33,6 +33,10 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     private(set) var mtu: Int = 23
     var isConnected: Bool { peripheral != nil }
 
+    /// Serial queue for all CoreBluetooth delegate callbacks, ensuring
+    /// thread-safe access to continuations and state.
+    private let bleQueue = DispatchQueue(label: "com.blerpc.ble", qos: .userInitiated)
+
     private var notifyContinuation: AsyncStream<Data>.Continuation?
     private var notifyIterator: AsyncStream<Data>.AsyncIterator?
 
@@ -58,7 +62,7 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
             }
             return cm
         }
-        let cm = CBCentralManager(delegate: self, queue: nil)
+        let cm = CBCentralManager(delegate: self, queue: bleQueue)
         self.centralManager = cm
         if cm.state != .poweredOn {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in

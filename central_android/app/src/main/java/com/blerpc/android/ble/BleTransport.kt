@@ -40,10 +40,10 @@ class BleTransport(private val context: Context) {
         private set
     val isConnected: Boolean get() = gatt != null
 
-    private var writeComplete: (() -> Unit)? = null
-    private var connectCont: ((Boolean) -> Unit)? = null
-    private var mtuCont: ((Int) -> Unit)? = null
-    private var descriptorWriteCont: (() -> Unit)? = null
+    @Volatile private var writeComplete: (() -> Unit)? = null
+    @Volatile private var connectCont: ((Boolean) -> Unit)? = null
+    @Volatile private var mtuCont: ((Int) -> Unit)? = null
+    @Volatile private var descriptorWriteCont: (() -> Unit)? = null
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {

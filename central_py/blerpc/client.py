@@ -47,7 +47,11 @@ class ResponseTooLargeError(Exception):
 class BlerpcClient(GeneratedClientMixin):
     """High-level RPC client that communicates over BLE."""
 
-    def __init__(self, known_keys_path: str | None = None):
+    def __init__(
+        self,
+        known_keys_path: str | None = None,
+        require_encryption: bool = True,
+    ):
         self._transport = BleTransport()
         self._splitter: ContainerSplitter | None = None
         self._assembler = ContainerAssembler()
@@ -58,6 +62,7 @@ class BlerpcClient(GeneratedClientMixin):
         # Encryption state
         self._session: BlerpcCryptoSession | None = None
         self._known_keys_path = known_keys_path
+        self._require_encryption = require_encryption
 
     @property
     def mtu(self) -> int:
@@ -99,6 +104,13 @@ class BlerpcClient(GeneratedClientMixin):
             await self._request_capabilities()
         except asyncio.TimeoutError:
             logger.debug("Peripheral did not respond to capabilities request")
+
+        if self._require_encryption and self._session is None:
+            raise RuntimeError(
+                "Encryption required but key exchange was not completed. "
+                "The peripheral may not support encryption or a MitM may "
+                "have stripped the encryption capability flag."
+            )
 
     async def _request_timeout(self) -> None:
         """Request timeout value from peripheral."""
@@ -199,6 +211,8 @@ class BlerpcClient(GeneratedClientMixin):
             )
         except ValueError as e:
             logger.error("Key exchange failed: %s", e)
+            if self._require_encryption:
+                raise
             return
 
         logger.info("E2E encryption established")
@@ -206,12 +220,16 @@ class BlerpcClient(GeneratedClientMixin):
     def _encrypt_payload(self, payload: bytes) -> bytes:
         """Encrypt payload if encryption is active."""
         if self._session is None:
+            if self._require_encryption:
+                raise RuntimeError("Encryption required but no session established")
             return payload
         return self._session.encrypt(payload)
 
     def _decrypt_payload(self, payload: bytes) -> bytes:
         """Decrypt payload if encryption is active."""
         if self._session is None:
+            if self._require_encryption:
+                raise RuntimeError("Encryption required but no session established")
             return payload
         return self._session.decrypt(payload)
 

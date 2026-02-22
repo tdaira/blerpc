@@ -16,6 +16,7 @@
 LOG_MODULE_REGISTER(handlers, LOG_LEVEL_INF);
 
 #define MAX_FLASH_READ_SIZE 8192
+#define MAX_COUNTER_STREAM_COUNT 10000
 
 int handle_echo(const uint8_t *req_data, size_t req_len, pb_ostream_t *ostream)
 {
@@ -97,6 +98,15 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
     }
 
     /* Validate flash read address bounds */
+#if defined(CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS) && CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS > 0
+    if (req.length > 0 &&
+        ((uint64_t)req.address + req.length > CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS ||
+         req.address + req.length < req.address)) {
+        LOG_ERR("FlashRead: address 0x%08x + length %u exceeds max allowed address 0x%x",
+                req.address, req.length, CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS);
+        return -1;
+    }
+#endif
     struct flash_pages_info page_info;
     size_t page_count = flash_get_page_count(flash_dev);
     if (page_count > 0 && flash_get_page_info_by_idx(flash_dev, page_count - 1, &page_info) == 0) {
@@ -198,6 +208,11 @@ int handle_counter_stream(const uint8_t *req_data, size_t req_len, pb_ostream_t 
     }
 
     LOG_INF("CounterStream: count=%u", req.count);
+
+    if (req.count > MAX_COUNTER_STREAM_COUNT) {
+        LOG_ERR("CounterStream: count %u exceeds max %d", req.count, MAX_COUNTER_STREAM_COUNT);
+        return -1;
+    }
 
     /* Send N responses, each with its own transaction_id */
     for (uint32_t i = 0; i < req.count; i++) {

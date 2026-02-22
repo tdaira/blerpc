@@ -396,8 +396,9 @@ async def test_tofu_rejects_changed_key():
         # Second connection with DIFFERENT peripheral key: should fail
         client2, peripheral2 = make_encrypted_client(known_keys_path=keys_path)
         # peripheral2 has a different key pair (auto-generated)
-        await client2._request_capabilities()
-        assert client2._session is None
+        # With require_encryption=True (default), this raises ValueError
+        with pytest.raises(ValueError, match="Peripheral key rejected"):
+            await client2._request_capabilities()
 
 
 # ── Encrypted RPC calls ──────────────────────────────────────────────
