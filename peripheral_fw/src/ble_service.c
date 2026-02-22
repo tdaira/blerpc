@@ -423,6 +423,12 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             }
 #ifdef CONFIG_BLERPC_ENCRYPTION
         } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
+            /* H-2: Block KX re-initiation when encryption is already active */
+            if (encryption_active) {
+                LOG_WRN("Key exchange rejected: encryption already active");
+                return len;
+            }
+
             uint8_t kx_out[BLERPC_STEP2_SIZE]; /* large enough for step 2 or 4 */
             size_t kx_out_len;
             bool session_established;
@@ -477,11 +483,14 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             req_work.len = decrypted_len;
             memcpy(req_work.data, decrypted, decrypted_len);
         } else {
-#endif
+            /* H-2: Reject unencrypted data when encryption is compiled in */
+            LOG_WRN("Rejecting unencrypted payload (encryption enabled but not active)");
+            container_assembler_init(&assembler);
+            return len;
+        }
+#else
             req_work.len = assembler.total_length;
             memcpy(req_work.data, assembler.buf, assembler.total_length);
-#ifdef CONFIG_BLERPC_ENCRYPTION
-        }
 #endif
         container_assembler_init(&assembler);
         k_work_submit_to_queue(&blerpc_work_q, &req_work.work);
@@ -531,6 +540,12 @@ static void connected(struct bt_conn *conn, uint8_t err)
     LOG_INF("Connected");
     current_conn = bt_conn_ref(conn);
     container_assembler_init(&assembler);
+    transaction_counter = 0;
+#ifdef CONFIG_BLERPC_ENCRYPTION
+    encryption_active = false;
+    memset(&crypto_session, 0, sizeof(crypto_session));
+    blerpc_peripheral_kx_reset(&peripheral_kx);
+#endif
 }
 
 static const struct bt_data ad[] = {
@@ -554,6 +569,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 #ifdef CONFIG_BLERPC_ENCRYPTION
     encryption_active = false;
     memset(&crypto_session, 0, sizeof(crypto_session));
+    blerpc_peripheral_kx_reset(&peripheral_kx);
 #endif
 
     int err = ble_service_start_advertising();

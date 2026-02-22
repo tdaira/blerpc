@@ -43,7 +43,7 @@ android {
 
 dependencies {
     // Protocol library (includes protobuf-javalite)
-    implementation("com.blerpc:blerpc-protocol-kt:0.4.0") // https://github.com/tdaira/blerpc-protocol-kt
+    implementation("com.blerpc:blerpc-protocol-kt:0.5.0") // https://github.com/tdaira/blerpc-protocol-kt
 
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.01.00"))
