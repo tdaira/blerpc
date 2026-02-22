@@ -24,7 +24,10 @@ class PeripheralErrorException(val errorCode: Byte) :
 
 class ProtocolException(message: String) : Exception(message)
 
-class BlerpcClient(context: Context) : GeneratedClient() {
+class BlerpcClient(
+    context: Context,
+    private val requireEncryption: Boolean = true,
+) : GeneratedClient() {
     val transport = BleTransport(context)
     private var splitter: ContainerSplitter? = null
     private val assembler = ContainerAssembler()
@@ -55,6 +58,14 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             requestCapabilities()
         } catch (_: TimeoutCancellationException) {
             Log.d(TAG, "Peripheral did not respond to capabilities request")
+        }
+
+        if (requireEncryption && session == null) {
+            throw IllegalStateException(
+                "Encryption required but key exchange was not completed. " +
+                "The peripheral may not support encryption or a MitM may " +
+                "have stripped the encryption capability flag."
+            )
         }
     }
 
@@ -131,14 +142,21 @@ class BlerpcClient(context: Context) : GeneratedClient() {
             Log.i(TAG, "E2E encryption established")
         } catch (e: Exception) {
             Log.e(TAG, "Key exchange failed: ${e.message}")
+            if (requireEncryption) throw e
         }
     }
 
     private fun encryptPayload(payload: ByteArray): ByteArray {
+        if (session == null && requireEncryption) {
+            throw IllegalStateException("Encryption required but no session established")
+        }
         return session?.encrypt(payload) ?: payload
     }
 
     private fun decryptPayload(payload: ByteArray): ByteArray {
+        if (session == null && requireEncryption) {
+            throw IllegalStateException("Encryption required but no session established")
+        }
         return session?.decrypt(payload) ?: payload
     }
 

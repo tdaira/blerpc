@@ -6,6 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/gap.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 #include <pb_encode.h>
 
@@ -92,7 +93,12 @@ struct request_work {
     uint8_t data[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 };
 
+#ifdef CONFIG_BLERPC_DOUBLE_BUFFER
+static struct request_work req_work_pool[2];
+static atomic_t req_work_index;
+#else
 static struct request_work req_work;
+#endif
 
 /* ── Streaming container sender ──────────────────────────────────────── */
 
@@ -203,6 +209,25 @@ static int container_send_cb(const uint8_t *data, size_t len, void *ctx)
 {
     (void)ctx;
     return send_with_retry(data, len);
+}
+
+/* Send an ERROR(BUSY) control container to signal the central to retry. */
+static void send_busy_error(uint8_t transaction_id)
+{
+    uint8_t ctrl_buf[8];
+    struct container_header ctrl = {
+        .transaction_id = transaction_id,
+        .sequence_number = 0,
+        .type = CONTAINER_TYPE_CONTROL,
+        .control_cmd = CONTROL_CMD_ERROR,
+        .payload_len = 1,
+    };
+    uint8_t err_payload[1] = {BLERPC_ERROR_BUSY};
+    ctrl.payload = err_payload;
+    int n = container_serialize(&ctrl, ctrl_buf, sizeof(ctrl_buf));
+    if (n > 0) {
+        send_with_retry(ctrl_buf, (size_t)n);
+    }
 }
 
 /* ── Request processing ──────────────────────────────────────────────── */
@@ -467,7 +492,37 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
     int rc = container_assembler_feed(&assembler, &hdr);
     if (rc == 1) {
         /* Assembly complete — process via work queue to free BT RX thread */
-        req_work.transaction_id = hdr.transaction_id;
+
+#ifdef CONFIG_BLERPC_DOUBLE_BUFFER
+        /* Pick a non-busy slot from the double-buffer pool */
+        int slot = -1;
+        for (int i = 0; i < 2; i++) {
+            int idx = (atomic_get(&req_work_index) + i) & 1;
+            if (!k_work_busy_get(&req_work_pool[idx].work)) {
+                slot = idx;
+                break;
+            }
+        }
+        if (slot < 0) {
+            LOG_WRN("Both request work slots busy, sending BUSY error");
+            send_busy_error(hdr.transaction_id);
+            container_assembler_init(&assembler);
+            return len;
+        }
+        atomic_set(&req_work_index, (slot + 1) & 1);
+        struct request_work *rw = &req_work_pool[slot];
+#else
+        /* Safe order: check busy FIRST, then write data */
+        if (k_work_busy_get(&req_work.work)) {
+            LOG_WRN("Request work busy, sending BUSY error");
+            send_busy_error(hdr.transaction_id);
+            container_assembler_init(&assembler);
+            return len;
+        }
+        struct request_work *rw = &req_work;
+#endif
+
+        rw->transaction_id = hdr.transaction_id;
 #ifdef CONFIG_BLERPC_ENCRYPTION
         if (encryption_active) {
             /* Decrypt assembled payload (static to avoid stack overflow on BT RX thread) */
@@ -480,8 +535,8 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
                 container_assembler_init(&assembler);
                 return len;
             }
-            req_work.len = decrypted_len;
-            memcpy(req_work.data, decrypted, decrypted_len);
+            rw->len = decrypted_len;
+            memcpy(rw->data, decrypted, decrypted_len);
         } else {
             /* Reject unencrypted data when encryption is compiled in */
             LOG_WRN("Rejecting unencrypted payload (encryption enabled but not active)");
@@ -489,11 +544,11 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             return len;
         }
 #else
-        req_work.len = assembler.total_length;
-        memcpy(req_work.data, assembler.buf, assembler.total_length);
+        rw->len = assembler.total_length;
+        memcpy(rw->data, assembler.buf, assembler.total_length);
 #endif
         container_assembler_init(&assembler);
-        k_work_submit_to_queue(&blerpc_work_q, &req_work.work);
+        k_work_submit_to_queue(&blerpc_work_q, &rw->work);
     } else if (rc < 0) {
         container_assembler_init(&assembler);
     }
@@ -543,7 +598,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
     transaction_counter = 0;
 #ifdef CONFIG_BLERPC_ENCRYPTION
     encryption_active = false;
-    memset(&crypto_session, 0, sizeof(crypto_session));
+    mbedtls_platform_zeroize(&crypto_session, sizeof(crypto_session));
     blerpc_peripheral_kx_reset(&peripheral_kx);
 #endif
 }
@@ -568,7 +623,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
     container_assembler_init(&assembler);
 #ifdef CONFIG_BLERPC_ENCRYPTION
     encryption_active = false;
-    memset(&crypto_session, 0, sizeof(crypto_session));
+    mbedtls_platform_zeroize(&crypto_session, sizeof(crypto_session));
     blerpc_peripheral_kx_reset(&peripheral_kx);
 #endif
 
@@ -593,7 +648,12 @@ void ble_service_init(void)
     k_work_queue_init(&blerpc_work_q);
     k_work_queue_start(&blerpc_work_q, blerpc_work_stack, K_THREAD_STACK_SIZEOF(blerpc_work_stack),
                        K_PRIO_COOP(7), NULL);
+#ifdef CONFIG_BLERPC_DOUBLE_BUFFER
+    k_work_init(&req_work_pool[0].work, request_work_handler);
+    k_work_init(&req_work_pool[1].work, request_work_handler);
+#else
     k_work_init(&req_work.work, request_work_handler);
+#endif
     container_assembler_init(&assembler);
 
 #ifdef CONFIG_BLERPC_ENCRYPTION

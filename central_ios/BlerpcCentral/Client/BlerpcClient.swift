@@ -13,6 +13,7 @@ enum BlerpcClientError: Error {
     case keyExchangeFailed(String)
     case encryptionError(String)
     case replayDetected(counter: UInt32)
+    case encryptionRequired
 }
 
 private let logger = Logger(subsystem: "com.blerpc", category: "BlerpcClient")
@@ -26,6 +27,7 @@ final class BlerpcClient: GeneratedClientProtocol {
     private var maxResponsePayloadSize: Int?
 
     private var session: BlerpcCryptoSession?
+    var requireEncryption: Bool = true
 
     var mtu: Int { transport.mtu }
     var isEncrypted: Bool { session != nil }
@@ -51,6 +53,10 @@ final class BlerpcClient: GeneratedClientProtocol {
             try await requestCapabilities()
         } catch is BleTransportError {
             logger.debug("Peripheral did not respond to capabilities request")
+        }
+
+        if requireEncryption && session == nil {
+            throw BlerpcClientError.encryptionRequired
         }
     }
 
@@ -122,12 +128,22 @@ final class BlerpcClient: GeneratedClientProtocol {
     }
 
     private func encryptPayload(_ payload: Data) throws -> Data {
-        guard let s = session else { return payload }
+        guard let s = session else {
+            if requireEncryption {
+                throw BlerpcClientError.encryptionRequired
+            }
+            return payload
+        }
         return try s.encrypt(payload)
     }
 
     private func decryptPayload(_ payload: Data) throws -> Data {
-        guard let s = session else { return payload }
+        guard let s = session else {
+            if requireEncryption {
+                throw BlerpcClientError.encryptionRequired
+            }
+            return payload
+        }
         return try s.decrypt(payload)
     }
 
