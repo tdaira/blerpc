@@ -99,8 +99,9 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
 
     /* Validate flash read address bounds */
 #if defined(CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS) && CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS > 0
-    if (req.length > 0 && ((uint64_t)req.address + req.length > CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS ||
-                           req.address + req.length < req.address)) {
+    if (req.length > 0 &&
+        ((uint64_t)req.address + req.length > CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS ||
+         req.address + req.length < req.address)) {
         LOG_ERR("FlashRead: address 0x%08x + length %u exceeds max allowed address 0x%x",
                 req.address, req.length, CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS);
         return -1;

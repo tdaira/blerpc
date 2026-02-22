@@ -221,9 +221,7 @@ class BlerpcClient(GeneratedClientMixin):
         """Encrypt payload if encryption is active."""
         if self._session is None:
             if self._require_encryption:
-                raise RuntimeError(
-                    "Encryption required but no session established"
-                )
+                raise RuntimeError("Encryption required but no session established")
             return payload
         return self._session.encrypt(payload)
 
@@ -231,9 +229,7 @@ class BlerpcClient(GeneratedClientMixin):
         """Decrypt payload if encryption is active."""
         if self._session is None:
             if self._require_encryption:
-                raise RuntimeError(
-                    "Encryption required but no session established"
-                )
+                raise RuntimeError("Encryption required but no session established")
             return payload
         return self._session.decrypt(payload)
 
