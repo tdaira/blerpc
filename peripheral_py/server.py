@@ -112,7 +112,7 @@ class BlerpcPeripheral:
         self._session: BlerpcCryptoSession | None = None
         self._kx: PeripheralKeyExchange | None = None
         self._ed25519_privkey = None  # Store for KX recreation on disconnect
-        self._connected = False  # Track connection state for M-3
+        self._connected = False
 
         if ed25519_private_key_hex:
             ed25519_priv_bytes = bytes.fromhex(ed25519_private_key_hex)
@@ -150,7 +150,7 @@ class BlerpcPeripheral:
         logger.info("Advertising as 'blerpc' — waiting for connections...")
 
     def _reset_connection_state(self):
-        """M-3: Reset session state for new connection."""
+        """Reset session state for new connection."""
         logger.info("Resetting connection state")
         self._session = None
         self._upload_count = 0
@@ -164,7 +164,7 @@ class BlerpcPeripheral:
         data = bytes(value)
         logger.debug("Write received: %d bytes", len(data))
 
-        # M-3: Detect new connection by tracking connection state.
+        # Detect new connection by tracking connection state.
         # bless doesn't provide disconnect callbacks, so we detect new
         # connections by watching for a CAPABILITIES request (always the first
         # thing a central sends). If we were previously connected and get a new
@@ -235,7 +235,7 @@ class BlerpcPeripheral:
             logger.warning("KEY_EXCHANGE received but encryption not supported")
             return
 
-        # H-2: Block KX re-initiation when session already exists
+        # Block KX re-initiation when session already exists
         if self._session is not None:
             logger.warning("KEY_EXCHANGE rejected: encryption already active")
             return
@@ -274,7 +274,7 @@ class BlerpcPeripheral:
                 logger.error("Decryption/replay error: %s", e)
                 return
         elif self._encryption_supported:
-            # H-2: Reject unencrypted data when encryption is supported
+            # Reject unencrypted data when encryption is supported
             logger.warning("Rejecting unencrypted payload (encryption supported but not active)")
             return
 

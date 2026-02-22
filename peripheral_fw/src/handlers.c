@@ -96,7 +96,7 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
         return -1;
     }
 
-    /* H-1: Validate flash read address bounds */
+    /* Validate flash read address bounds */
     struct flash_pages_info page_info;
     size_t page_count = flash_get_page_count(flash_dev);
     if (page_count > 0 &&

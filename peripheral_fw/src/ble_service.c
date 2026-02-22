@@ -423,7 +423,7 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             }
 #ifdef CONFIG_BLERPC_ENCRYPTION
         } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
-            /* H-2: Block KX re-initiation when encryption is already active */
+            /* Block KX re-initiation when encryption is already active */
             if (encryption_active) {
                 LOG_WRN("Key exchange rejected: encryption already active");
                 return len;
@@ -483,7 +483,7 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             req_work.len = decrypted_len;
             memcpy(req_work.data, decrypted, decrypted_len);
         } else {
-            /* H-2: Reject unencrypted data when encryption is compiled in */
+            /* Reject unencrypted data when encryption is compiled in */
             LOG_WRN("Rejecting unencrypted payload (encryption enabled but not active)");
             container_assembler_init(&assembler);
             return len;
