@@ -275,7 +275,10 @@ class BlerpcPeripheral:
                 return
         elif self._encryption_supported:
             # Reject unencrypted data when encryption is supported
-            logger.warning("Rejecting unencrypted payload (encryption supported but not active)")
+            logger.warning(
+                "Rejecting unencrypted payload"
+                " (encryption supported but not active)"
+            )
             return
 
         cmd = CommandPacket.deserialize(payload)

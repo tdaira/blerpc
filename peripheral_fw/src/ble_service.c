@@ -489,8 +489,8 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             return len;
         }
 #else
-            req_work.len = assembler.total_length;
-            memcpy(req_work.data, assembler.buf, assembler.total_length);
+        req_work.len = assembler.total_length;
+        memcpy(req_work.data, assembler.buf, assembler.total_length);
 #endif
         container_assembler_init(&assembler);
         k_work_submit_to_queue(&blerpc_work_q, &req_work.work);
