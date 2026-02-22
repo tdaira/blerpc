@@ -14,6 +14,7 @@ bleRPC generates client and handler code from `.proto` files for multiple platfo
 - Define services once in Protocol Buffers, generate code for each platform
 - ~30 KB/s throughput over BLE
 - Runs on devices with as little as 32 KB RAM
+- Optional E2E encryption (X25519 + Ed25519 + AES-128-GCM)
 
 ## Supported Platforms
 

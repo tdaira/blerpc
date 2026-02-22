@@ -22,7 +22,7 @@ Run tests:
 
 ```bash
 cd central_py
-python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py -v
+python -m pytest tests/test_container.py tests/test_command.py tests/test_client.py tests/test_encryption.py -v
 ```
 
 ### Android

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- E2E encryption: X25519 ECDH + Ed25519 signatures + AES-128-GCM + HKDF-SHA256
+- Ephemeral X25519 keypairs per connection for forward secrecy
+- TOFU (Trust On First Use) key management for Ed25519 identity keys
+- CAPABILITIES format extended to 6 bytes with encryption flags field
+- `ControlCmd.KEY_EXCHANGE` (0x6) for 4-step key exchange handshake
+- Flash read address bounds validation (integer overflow and out-of-bounds prevention)
+- Mandatory encryption mode: reject unencrypted payloads when encryption is enabled
+- Key exchange state machine validation (prevents out-of-order steps)
+- TX counter overflow check (prevents AES-GCM nonce reuse at 2^32-1)
+- Thread-safe encrypt/decrypt in Python, Kotlin, and Swift crypto sessions
+- Disconnect state reset for Python peripheral and firmware
 - CONTRIBUTING.md, SECURITY.md, and CHANGELOG.md for OSS readiness
 - GitHub issue and pull request templates
 - Python edge-case tests (malformed protobuf, empty data, special characters)
@@ -13,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - Documentation comments in `proto/blerpc.proto`
 
 ### Changed
+- Protocol libraries updated to 0.5.0
 - Narrowed exception handling in Android/iOS connect (catch specific timeout errors)
 - Replaced magic numbers with named constants in C and Python
 - Fixed Android deprecated API usage with API 33+ version branching
