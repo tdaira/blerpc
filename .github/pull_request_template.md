@@ -8,3 +8,4 @@
 - [ ] Python unit tests pass
 - [ ] Android builds successfully
 - [ ] iOS builds successfully
+- [ ] Flutter builds successfully

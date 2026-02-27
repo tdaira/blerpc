@@ -44,6 +44,21 @@ xcodebuild -project BlerpcCentral.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
+### Flutter (Dart)
+
+```bash
+cd central_flutter
+flutter pub get
+```
+
+Run analysis and tests:
+
+```bash
+cd central_flutter
+dart analyze --fatal-infos
+flutter test
+```
+
 ### Code Generation
 
 When modifying `proto/blerpc.proto`, regenerate handlers:

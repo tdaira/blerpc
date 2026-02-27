@@ -91,3 +91,24 @@ jobs:
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  flutter-build:
+    name: Flutter Build & Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.x'
+      - name: Install dependencies
+        working-directory: central_flutter
+        run: flutter pub get
+      - name: Analyze
+        working-directory: central_flutter
+        run: dart analyze --fatal-infos
+      - name: Format check
+        working-directory: central_flutter
+        run: dart format --output=none --set-exit-if-changed lib/ test/
+      - name: Test
+        working-directory: central_flutter
+        run: flutter test
