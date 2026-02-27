@@ -9,10 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  blerpc_protocol:
-    git:
-      url: https://github.com/tdaira/blerpc-protocol-dart.git
-      ref: main
+  blerpc_protocol: ^0.6.0
   flutter_blue_plus: ^1.35.0
   protobuf: ^6.0.0
 

@@ -10,6 +10,7 @@ assignees: ''
 - [ ] Python (macOS)
 - [ ] iOS (Swift)
 - [ ] Android (Kotlin)
+- [ ] Flutter (Dart)
 - [ ] Firmware (C/Zephyr)
 
 **Board/Device** (if applicable):

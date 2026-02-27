@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -75,8 +76,12 @@ class BleTransport {
     _device = scannedDevice.device;
     await _device!.connect(autoConnect: false, mtu: null);
 
-    // Request MTU
-    _mtu = await _device!.requestMtu(247);
+    // Request MTU (Android only — iOS negotiates MTU automatically)
+    if (Platform.isAndroid) {
+      _mtu = await _device!.requestMtu(247);
+    } else {
+      _mtu = _device!.mtuNow;
+    }
 
     // Discover services
     final services = await _device!.discoverServices();

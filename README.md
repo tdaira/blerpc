@@ -25,6 +25,7 @@ bleRPC generates client and handler code from `.proto` files for multiple platfo
 | macOS | Python |
 | iOS | Swift |
 | Android | Kotlin |
+| iOS / Android | Dart (Flutter) |
 | nRF54L15 DK | C (Zephyr) |
 
 ### Peripheral (Server)
@@ -44,6 +45,7 @@ bleRPC generates client and handler code from `.proto` files for multiple platfo
 | `central_fw/` | C Central firmware (nRF54L15 DK / Zephyr) |
 | `central_ios/` | Swift Central app (iOS) |
 | `central_android/` | Kotlin Central app (Android) |
+| `central_flutter/` | Dart Central app (Flutter) |
 | `peripheral_fw/` | C Peripheral firmware (nRF54L15 DK, EFR32xG22E / Zephyr) |
 | `peripheral_py/` | Python Peripheral server (macOS) |
 | `boards/` | Custom Zephyr board definitions |
@@ -61,6 +63,7 @@ See the [Getting Started](https://blerpc.net/getting-started.html) guide.
 | Python / C | [blerpc-protocol](https://github.com/tdaira/blerpc-protocol) |
 | Swift | [blerpc-protocol-swift](https://github.com/tdaira/blerpc-protocol-swift) |
 | Kotlin | [blerpc-protocol-kt](https://github.com/tdaira/blerpc-protocol-kt) |
+| Dart | [blerpc-protocol-dart](https://github.com/tdaira/blerpc-protocol-dart) |
 
 ## Documentation
 

@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 - **H-8**: `permissions: { contents: read }` added to all CI workflows
 - New `BLERPC_ERROR_BUSY` (0x02) error code in all protocol libraries
 
+### Added
+- Flutter (Dart) central client with functional tests and benchmarks
+- Dart protocol library (`blerpc-protocol-dart`) published to pub.dev
+
 ### Changed
 - Protocol libraries updated to 0.6.0
 

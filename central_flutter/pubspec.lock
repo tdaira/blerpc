@@ -20,11 +20,10 @@ packages:
   blerpc_protocol:
     dependency: "direct main"
     description:
-      path: "."
-      ref: main
-      resolved-ref: "0a8d4fb2a2f5b53f8303fb533890e75b028473d4"
-      url: "https://github.com/tdaira/blerpc-protocol-dart.git"
-    source: git
+      name: blerpc_protocol
+      sha256: a2a45dd8910df6adb5b27c24409d1ceebeeb8c7cc54d9859a33723e70e0e1c4c
+      url: "https://pub.dev"
+    source: hosted
     version: "0.6.0"
   bluez:
     dependency: transitive
