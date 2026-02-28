@@ -65,7 +65,7 @@ When modifying `proto/blerpc.proto`, regenerate handlers:
 
 ```bash
 cd tools/generate-handlers
-go run . ../../proto/blerpc.proto
+go run . -root ../..
 ```
 
 ## Code Style
