@@ -81,16 +81,20 @@ class TestRunner(private val context: Context) {
                 }
 
                 runTest(client, "counter_stream") {
-                    val results = client.counterStreamAll(5)
+                    val results = client.counterStream(count = 5)
                     check(results.size == 5) { "Expected 5 results, got ${results.size}" }
                     for (i in 0 until 5) {
-                        check(results[i].first == i) { "Expected seq=$i, got ${results[i].first}" }
-                        check(results[i].second == i * 10) { "Expected value=${i * 10}, got ${results[i].second}" }
+                        check(results[i].seq == i) { "Expected seq=$i, got ${results[i].seq}" }
+                        check(results[i].value == i * 10) { "Expected value=${i * 10}, got ${results[i].value}" }
                     }
                 }
 
                 runTest(client, "counter_upload") {
-                    val resp = client.counterUploadAll(5)
+                    val messages = (0 until 5).map { i ->
+                        blerpc.Blerpc.CounterUploadRequest.newBuilder()
+                            .setSeq(i).setValue(i * 10).build()
+                    }
+                    val resp = client.counterUpload(messages)
                     check(resp.receivedCount == 5) { "Expected received_count=5, got ${resp.receivedCount}" }
                 }
             }
@@ -195,15 +199,19 @@ class TestRunner(private val context: Context) {
 
         // counter_stream (P→C): peripheral sends 'count' responses
         val startMs1 = System.currentTimeMillis()
-        val results = client.counterStreamAll(count)
+        val results = client.counterStream(count = count)
         val elapsedMs1 = System.currentTimeMillis() - startMs1
         check(results.size == count)
         log("[BENCH] counter_stream (P→C): %d items in %d ms (%.1f ms/item)".format(
             count, elapsedMs1, elapsedMs1.toDouble() / count))
 
         // counter_upload (C→P): central sends 'count' requests
+        val messages = (0 until count).map { i ->
+            blerpc.Blerpc.CounterUploadRequest.newBuilder()
+                .setSeq(i).setValue(i * 10).build()
+        }
         val startMs2 = System.currentTimeMillis()
-        val resp = client.counterUploadAll(count)
+        val resp = client.counterUpload(messages)
         val elapsedMs2 = System.currentTimeMillis() - startMs2
         check(resp.receivedCount == count)
         log("[BENCH] counter_upload (C→P): %d items in %d ms (%.1f ms/item)".format(

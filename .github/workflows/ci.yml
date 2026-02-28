@@ -92,6 +92,31 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  rn-build:
+    name: React Native Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install dependencies
+        working-directory: central_rn
+        run: npm ci
+      - name: Lint
+        working-directory: central_rn
+        run: npx eslint src/ --ignore-pattern 'src/proto/'
+      - name: Format check
+        working-directory: central_rn
+        run: npx prettier --check 'src/**/*.{ts,tsx}'
+      - name: Android build
+        working-directory: central_rn/android
+        run: ./gradlew assembleDebug
+
   flutter-build:
     name: Flutter Build & Analyze
     runs-on: ubuntu-latest

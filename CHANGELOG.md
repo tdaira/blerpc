@@ -18,11 +18,18 @@ All notable changes to this project will be documented in this file.
 - New `BLERPC_ERROR_BUSY` (0x02) error code in all protocol libraries
 
 ### Added
+- React Native (TypeScript) central client for iOS and Android with functional tests and benchmarks
+- TypeScript protocol library (`blerpc-protocol-rn`) using @noble cryptographic libraries
+- C central client code generation (`generated_client.c/h`) with typed wrappers for all commands
+- Streaming command code generation (`counter_stream` P2C, `counter_upload` C2P) for all 6 client languages
 - Flutter (Dart) central client with functional tests and benchmarks
 - Dart protocol library (`blerpc-protocol-dart`) published to pub.dev
 
 ### Changed
 - Protocol libraries updated to 0.6.0
+- Code generator now outputs streaming methods in all generated clients
+- `proto/streaming.txt` format extended with direction (`p2c`/`c2p`)
+- `central_fw/src/main.c` refactored to use generated client API
 
 ## [0.5.0] - 2026-02-22
 

@@ -1,0 +1,10 @@
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'BlerpcCentral'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+
+// Manual include for @react-native-clipboard/clipboard (not picked up by autolinkLibrariesFromCommand)
+include ':react-native-clipboard_clipboard'
+project(':react-native-clipboard_clipboard').projectDir = new File(rootProject.projectDir, '../node_modules/@react-native-clipboard/clipboard/android')

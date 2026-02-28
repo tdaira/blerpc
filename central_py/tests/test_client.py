@@ -350,12 +350,12 @@ async def test_counter_stream():
         )
     inject_stream_end_p2c(transport, transaction_id=100)
 
-    results = await client.counter_stream(count)
+    results = await client.counter_stream(count=count)
 
     assert len(results) == count
-    for i, (seq, value) in enumerate(results):
-        assert seq == i
-        assert value == i * 10
+    for i, resp in enumerate(results):
+        assert resp.seq == i
+        assert resp.value == i * 10
 
 
 @pytest.mark.asyncio
@@ -366,7 +366,7 @@ async def test_counter_stream_empty():
 
     inject_stream_end_p2c(transport, transaction_id=100)
 
-    results = await client.counter_stream(0)
+    results = await client.counter_stream(count=0)
     assert results == []
 
 
@@ -383,8 +383,11 @@ async def test_counter_upload():
         "counter_upload", resp.SerializeToString(), transaction_id=50
     )
 
-    result = await client.counter_upload(count)
-    assert result == count
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(count)
+    ]
+    result = await client.counter_upload(messages)
+    assert result.received_count == count
 
     # Verify N requests + STREAM_END_C2P were sent
     # N messages each produce container(s), plus one STREAM_END_C2P control container
@@ -519,8 +522,8 @@ async def test_counter_upload_empty():
     transport.inject_response(
         "counter_upload", resp.SerializeToString(), transaction_id=50
     )
-    result = await client.counter_upload(0)
-    assert result == 0
+    result = await client.counter_upload([])
+    assert result.received_count == 0
 
     # Only STREAM_END_C2P should have been sent (no data messages)
     written_containers = [Container.deserialize(w) for w in transport._written]

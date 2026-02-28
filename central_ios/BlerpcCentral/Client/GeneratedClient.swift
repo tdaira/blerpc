@@ -32,4 +32,17 @@ extension GeneratedClientProtocol {
         let respData = try await call(cmdName: "data_write", requestData: try req.serializedData())
         return try Blerpc_DataWriteResponse(serializedBytes: respData)
     }
+
+    func counterStream(count: UInt32 = 0) async throws -> [Blerpc_CounterStreamResponse] {
+        var req = Blerpc_CounterStreamRequest()
+        req.count = count
+        let responses = try await streamReceive(cmdName: "counter_stream", requestData: try req.serializedData())
+        return try responses.map { try Blerpc_CounterStreamResponse(serializedBytes: $0) }
+    }
+
+    func counterUpload(messages: [Blerpc_CounterUploadRequest]) async throws -> Blerpc_CounterUploadResponse {
+        let raw = try messages.map { try $0.serializedData() }
+        let respData = try await streamSend(cmdName: "counter_upload", messages: raw, finalCmdName: "counter_upload")
+        return try Blerpc_CounterUploadResponse(serializedBytes: respData)
+    }
 }

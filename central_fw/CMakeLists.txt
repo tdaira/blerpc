@@ -16,8 +16,14 @@ target_sources(app PRIVATE
     src/main.c
     src/ble_central.c
     src/blerpc.pb.c
+    src/generated_client.c
 )
 
 target_include_directories(app PRIVATE
     src
+)
+
+# Match generated client response buffer to assembler buffer size
+target_compile_definitions(app PRIVATE
+    BLERPC_GENERATED_RESP_BUF_SIZE=CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE
 )
