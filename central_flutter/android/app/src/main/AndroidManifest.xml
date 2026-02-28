@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application
-        android:label="blerpc_central"
+        android:label="bleRPC Central"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

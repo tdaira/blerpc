@@ -36,10 +36,10 @@ class TestRunner(private val context: Context) {
             if (device != null) {
                 target = device
             } else {
-                log("Scanning for blerpc peripherals...")
+                log("Scanning for bleRPC peripherals...")
                 val devices = client.scan()
                 if (devices.isEmpty()) {
-                    log("[ERROR] No blerpc devices found")
+                    log("[ERROR] No bleRPC devices found")
                     running = false
                     return
                 }

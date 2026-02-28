@@ -26,10 +26,10 @@ final class TestRunner: ObservableObject {
             if let device = device {
                 target = device
             } else {
-                log("Scanning for blerpc peripherals...")
+                log("Scanning for bleRPC peripherals...")
                 let devices = try await client.scan()
                 guard let first = devices.first else {
-                    log("[ERROR] No blerpc devices found")
+                    log("[ERROR] No bleRPC devices found")
                     running = false
                     return
                 }
