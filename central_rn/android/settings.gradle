@@ -4,3 +4,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autoli
 rootProject.name = 'BlerpcCentral'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
+
+// Manual include for @react-native-clipboard/clipboard (not picked up by autolinkLibrariesFromCommand)
+include ':react-native-clipboard_clipboard'
+project(':react-native-clipboard_clipboard').projectDir = new File(rootProject.projectDir, '../node_modules/@react-native-clipboard/clipboard/android')

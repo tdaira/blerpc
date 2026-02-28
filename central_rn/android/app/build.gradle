@@ -39,4 +39,5 @@ dependencies {
     // Autolinked native modules
     implementation project(':react-native-ble-plx')
     implementation project(':react-native-get-random-values')
+    implementation project(':react-native-clipboard_clipboard')
 }
