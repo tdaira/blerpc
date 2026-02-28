@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'dart:typed_data';
 
-import 'package:blerpc_central/proto/blerpc.pb.dart';
 import 'package:blerpc_protocol/blerpc_protocol.dart';
 
 import '../ble/ble_transport.dart';
@@ -352,30 +351,6 @@ class BlerpcClient with GeneratedClientMixin {
         return resp.data;
       }
     }
-  }
-
-  // Streaming convenience methods (manually implemented, not auto-generated)
-
-  Future<List<(int, int)>> counterStreamAll(int count) async {
-    final req = CounterStreamRequest()..count = count;
-    final responses = await streamReceive(
-        'counter_stream', Uint8List.fromList(req.writeToBuffer()));
-    return responses.map((data) {
-      final resp = CounterStreamResponse.fromBuffer(data);
-      return (resp.seq, resp.value);
-    }).toList();
-  }
-
-  Future<CounterUploadResponse> counterUploadAll(int count) async {
-    final messages = List.generate(count, (i) {
-      final req = CounterUploadRequest()
-        ..seq = i
-        ..value = i * 10;
-      return Uint8List.fromList(req.writeToBuffer());
-    });
-    final respData =
-        await streamSend('counter_upload', messages, 'counter_upload');
-    return CounterUploadResponse.fromBuffer(respData);
   }
 
   void disconnect() {

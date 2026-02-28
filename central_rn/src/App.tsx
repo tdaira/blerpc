@@ -9,7 +9,8 @@ import {
   PermissionsAndroid,
   Clipboard,
 } from 'react-native';
-import { BleTransport, ScannedDevice } from './ble/BleTransport';
+import { ScannedDevice } from './ble/BleTransport';
+import { BlerpcClient } from './client/BlerpcClient';
 import { TestRunner } from './test/TestRunner';
 
 // blerpc.net dark theme colors
@@ -47,6 +48,13 @@ export default function App() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 50);
   }, []);
+
+  // Single BlerpcClient instance — react-native-ble-plx requires exactly
+  // one BleManager for the lifetime of the app.
+  const clientRef = useRef<BlerpcClient | null>(null);
+  if (!clientRef.current) {
+    clientRef.current = new BlerpcClient(true);
+  }
 
   const testRunnerRef = useRef<TestRunner | null>(null);
   if (!testRunnerRef.current) {
@@ -96,8 +104,7 @@ export default function App() {
 
     addLog('Scanning...');
     try {
-      const transport = new BleTransport();
-      const found = await transport.scan();
+      const found = await clientRef.current!.scan();
       setDevices(found);
       addLog(`Found ${found.length} device(s)`);
     } catch (e) {
@@ -112,7 +119,11 @@ export default function App() {
     setLogs([]);
     logIdCounter = 0;
 
-    await testRunnerRef.current!.runAll({ device });
+    try {
+      await testRunnerRef.current!.runAll({ device, client: clientRef.current! });
+    } catch (e) {
+      addLog(`[ERROR] Uncaught: ${e}`);
+    }
     setRunning(false);
   };
 

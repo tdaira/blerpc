@@ -421,29 +421,6 @@ class BlerpcClient(GeneratedClientMixin):
             )
         return resp.data
 
-    async def counter_stream(self, count: int) -> list[tuple[int, int]]:
-        """P->C stream: request counter values, return (seq, value) list."""
-        req = blerpc_pb2.CounterStreamRequest(count=count)
-        results = []
-        async for data in self.stream_receive(
-            "counter_stream", req.SerializeToString()
-        ):
-            resp = blerpc_pb2.CounterStreamResponse()
-            resp.ParseFromString(data)
-            results.append((resp.seq, resp.value))
-        return results
-
-    async def counter_upload(self, count: int) -> int:
-        """C->P stream: upload count counter values, return received_count."""
-        messages = []
-        for i in range(count):
-            req = blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10)
-            messages.append(req.SerializeToString())
-        resp_data = await self.stream_send("counter_upload", messages, "counter_upload")
-        resp = blerpc_pb2.CounterUploadResponse()
-        resp.ParseFromString(resp_data)
-        return resp.received_count
-
     async def disconnect(self) -> None:
         """Disconnect from the peripheral."""
         await self._transport.disconnect()

@@ -79,8 +79,6 @@ class BleTransport {
     // Request MTU (Android only — iOS negotiates MTU automatically)
     if (Platform.isAndroid) {
       _mtu = await _device!.requestMtu(247);
-    } else {
-      _mtu = _device!.mtuNow;
     }
 
     // Discover services
@@ -100,6 +98,12 @@ class BleTransport {
       throw StateError('blerpc characteristic not found');
     }
     _char = targetChar;
+
+    // On iOS, MTU is negotiated automatically during service discovery.
+    // Read it here after discovery is complete.
+    if (!Platform.isAndroid) {
+      _mtu = _device!.mtuNow;
+    }
 
     // Enable notifications — use a queue so that events arriving between
     // consecutive readNotify() calls are buffered instead of lost.

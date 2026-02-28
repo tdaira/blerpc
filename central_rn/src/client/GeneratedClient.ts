@@ -32,4 +32,23 @@ export abstract class GeneratedClient {
     const respData = await this.call('data_write', blerpc.DataWriteRequest.encode(req).finish());
     return blerpc.DataWriteResponse.decode(respData);
   }
+
+  async counterStream({
+    count = 0,
+  }: { count?: number } = {}): Promise<blerpc.CounterStreamResponse[]> {
+    const req = blerpc.CounterStreamRequest.create({ count });
+    const responses = await this.streamReceive(
+      'counter_stream',
+      blerpc.CounterStreamRequest.encode(req).finish(),
+    );
+    return responses.map((data) => blerpc.CounterStreamResponse.decode(data));
+  }
+
+  async counterUpload(messages: blerpc.ICounterUploadRequest[]): Promise<blerpc.CounterUploadResponse> {
+    const raw = messages.map((m) =>
+      blerpc.CounterUploadRequest.encode(blerpc.CounterUploadRequest.create(m)).finish(),
+    );
+    const respData = await this.streamSend('counter_upload', raw, 'counter_upload');
+    return blerpc.CounterUploadResponse.decode(respData);
+  }
 }

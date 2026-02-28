@@ -9,6 +9,7 @@ import time
 import pytest
 import pytest_asyncio
 from blerpc.client import BlerpcClient, PayloadTooLargeError, ResponseTooLargeError
+from blerpc.generated import blerpc_pb2
 
 # Skip all tests if no BLE hardware is available
 pytestmark = pytest.mark.skipif(
@@ -240,40 +241,46 @@ async def test_multi_container_echo(client):
 async def test_counter_stream(client):
     """P→C stream: receive N counter values."""
     count = 5
-    results = await client.counter_stream(count)
+    results = await client.counter_stream(count=count)
     print(f"\nCounterStream: received {len(results)} responses")
     assert len(results) == count
-    for i, (seq, value) in enumerate(results):
-        assert seq == i, f"seq mismatch at {i}: expected {i}, got {seq}"
-        assert value == i * 10, f"value mismatch at {i}: expected {i * 10}, got {value}"
+    for i, resp in enumerate(results):
+        assert resp.seq == i, f"seq mismatch at {i}: expected {i}, got {resp.seq}"
+        assert resp.value == i * 10, f"value mismatch at {i}: expected {i * 10}, got {resp.value}"
 
 
 @pytest.mark.asyncio
 async def test_counter_stream_large(client):
     """P→C stream: receive 20 counter values."""
     count = 20
-    results = await client.counter_stream(count)
+    results = await client.counter_stream(count=count)
     assert len(results) == count
-    for i, (seq, value) in enumerate(results):
-        assert seq == i
-        assert value == i * 10
+    for i, resp in enumerate(results):
+        assert resp.seq == i
+        assert resp.value == i * 10
 
 
 @pytest.mark.asyncio
 async def test_counter_upload(client):
     """C→P stream: upload N counter values."""
     count = 5
-    received = await client.counter_upload(count)
-    print(f"\nCounterUpload: received_count={received}")
-    assert received == count
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(count)
+    ]
+    result = await client.counter_upload(messages)
+    print(f"\nCounterUpload: received_count={result.received_count}")
+    assert result.received_count == count
 
 
 @pytest.mark.asyncio
 async def test_counter_upload_large(client):
     """C→P stream: upload 20 counter values."""
     count = 20
-    received = await client.counter_upload(count)
-    assert received == count
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(count)
+    ]
+    result = await client.counter_upload(messages)
+    assert result.received_count == count
 
 
 @pytest.mark.asyncio
@@ -283,7 +290,7 @@ async def test_stream_throughput(client):
 
     # counter_stream (P→C): peripheral sends 'count' responses
     start = time.monotonic()
-    results = await client.counter_stream(count)
+    results = await client.counter_stream(count=count)
     elapsed = time.monotonic() - start
     assert len(results) == count
     ms_per_item = elapsed * 1000 / count
@@ -293,10 +300,13 @@ async def test_stream_throughput(client):
     )
 
     # counter_upload (C→P): central sends 'count' requests
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(count)
+    ]
     start = time.monotonic()
-    received = await client.counter_upload(count)
+    result = await client.counter_upload(messages)
     elapsed = time.monotonic() - start
-    assert received == count
+    assert result.received_count == count
     ms_per_item = elapsed * 1000 / count
     print(
         f"[BENCH] counter_upload (C->P): {count} items in {elapsed * 1000:.0f} ms "

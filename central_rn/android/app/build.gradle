@@ -35,4 +35,8 @@ android {
 dependencies {
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.react:hermes-android")
+
+    // Autolinked native modules
+    implementation project(':react-native-ble-plx')
+    implementation project(':react-native-get-random-values')
 }

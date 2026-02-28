@@ -501,9 +501,9 @@ async def test_encrypted_counter_stream():
 
     results = await client.counter_stream(count=5)
     assert len(results) == 5
-    for i, (seq, value) in enumerate(results):
-        assert seq == i
-        assert value == i * 10
+    for i, resp in enumerate(results):
+        assert resp.seq == i
+        assert resp.value == i * 10
 
 
 @pytest.mark.asyncio
@@ -522,8 +522,11 @@ async def test_encrypted_counter_upload():
     client, _ = make_encrypted_client()
     await client._request_capabilities()
 
-    received = await client.counter_upload(count=5)
-    assert received == 5
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(5)
+    ]
+    result = await client.counter_upload(messages)
+    assert result.received_count == 5
 
 
 @pytest.mark.asyncio
@@ -532,8 +535,11 @@ async def test_encrypted_counter_upload_large():
     client, _ = make_encrypted_client()
     await client._request_capabilities()
 
-    received = await client.counter_upload(count=20)
-    assert received == 20
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(20)
+    ]
+    result = await client.counter_upload(messages)
+    assert result.received_count == 20
 
 
 # ── Counter validation ───────────────────────────────────────────────
@@ -588,5 +594,8 @@ async def test_encrypted_multiple_rpcs_sequence():
     assert len(results) == 3
 
     # Upload
-    received = await client.counter_upload(count=3)
-    assert received == 3
+    messages = [
+        blerpc_pb2.CounterUploadRequest(seq=i, value=i * 10) for i in range(3)
+    ]
+    result = await client.counter_upload(messages)
+    assert result.received_count == 3

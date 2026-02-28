@@ -1,14 +1,12 @@
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/logging/log.h>
-#include <pb_encode.h>
-#include <pb_decode.h>
 #include <string.h>
 
 #include "ble_central.h"
 #include <blerpc_protocol/container.h>
 #include <blerpc_protocol/command.h>
-#include "blerpc.pb.h"
+#include "generated_client.h"
 #ifdef CONFIG_BLERPC_ENCRYPTION
 #include <mbedtls/platform.h>
 #endif
@@ -31,7 +29,7 @@ static uint8_t shared_work_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 static uint8_t shared_decode_buf[CONFIG_BLERPC_PROTOCOL_ASSEMBLER_BUF_SIZE];
 
 static int rpc_error_code;
-static K_SEM_DEFINE(response_sem, 0, 1);
+static K_SEM_DEFINE(response_sem, 0, 10);
 
 static uint8_t transaction_counter;
 
@@ -68,18 +66,15 @@ static int send_container(const uint8_t *data, size_t len, void *ctx)
     return ble_central_write(data, len);
 }
 
-/**
- * Send an RPC request and wait for the response.
- * Returns the protobuf response data length, or -1 on error.
- * Response protobuf data is in resp_data, length in resp_data_len.
- */
-static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_len,
-                    uint8_t *resp_pb, size_t resp_pb_size, size_t *resp_pb_len)
+/* ── RPC transport functions (extern'd by generated_client.h) ────────── */
+
+int blerpc_rpc_call(const char *cmd_name, const uint8_t *req_data, size_t req_len,
+                    uint8_t *resp_data, size_t resp_size, size_t *resp_len)
 {
     uint8_t name_len = (uint8_t)strlen(cmd_name);
 
-    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, req_pb,
-                                    (uint16_t)req_pb_len, shared_cmd_buf, sizeof(shared_cmd_buf));
+    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, req_data,
+                                    (uint16_t)req_len, shared_cmd_buf, sizeof(shared_cmd_buf));
     if (cmd_len < 0) {
         LOG_ERR("Command serialize failed");
         return -1;
@@ -137,13 +132,167 @@ static int rpc_call(const char *cmd_name, const uint8_t *req_pb, size_t req_pb_l
         return -1;
     }
 
-    if (resp_cmd.data_len > resp_pb_size) {
-        LOG_ERR("Response data too large: %u > %zu", resp_cmd.data_len, resp_pb_size);
+    if (resp_cmd.data_len > resp_size) {
+        LOG_ERR("Response data too large: %u > %zu", resp_cmd.data_len, resp_size);
         return -1;
     }
 
-    memcpy(resp_pb, resp_cmd.data, resp_cmd.data_len);
-    *resp_pb_len = resp_cmd.data_len;
+    memcpy(resp_data, resp_cmd.data, resp_cmd.data_len);
+    *resp_len = resp_cmd.data_len;
+    return 0;
+}
+
+/* Stream end signaling for blerpc_stream_receive */
+static volatile bool _stream_ended;
+
+static void _stream_end_cb(void)
+{
+    _stream_ended = true;
+    k_sem_give(&response_sem);
+}
+
+int blerpc_stream_receive(const char *cmd_name, const uint8_t *req_data, size_t req_len,
+                          blerpc_on_stream_resp_t on_resp, void *ctx)
+{
+    uint8_t name_len = (uint8_t)strlen(cmd_name);
+
+    _stream_ended = false;
+    ble_central_set_stream_end_cb(_stream_end_cb);
+
+    /* Serialize and send the initial request */
+    int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, req_data,
+                                    (uint16_t)req_len, shared_cmd_buf, sizeof(shared_cmd_buf));
+    if (cmd_len < 0) {
+        LOG_ERR("Command serialize failed");
+        ble_central_set_stream_end_cb(NULL);
+        return -1;
+    }
+
+    size_t send_len;
+    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
+                                    sizeof(encrypt_buf), &send_len) != 0) {
+        LOG_ERR("Payload encryption failed");
+        ble_central_set_stream_end_cb(NULL);
+        return -1;
+    }
+
+    uint8_t tid = next_transaction_id();
+    uint16_t mtu = ble_central_get_mtu();
+    int rc = container_split_and_send(tid, encrypt_buf, send_len, mtu, send_container, NULL);
+    if (rc < 0) {
+        LOG_ERR("Container split/send failed: %d", rc);
+        ble_central_set_stream_end_cb(NULL);
+        return -1;
+    }
+
+    /* Receive responses until STREAM_END_P2C */
+    while (true) {
+        rc = k_sem_take(&response_sem, K_SECONDS(10));
+        if (rc != 0) {
+            LOG_ERR("Stream response timeout");
+            ble_central_set_stream_end_cb(NULL);
+            return -1;
+        }
+
+        if (_stream_ended) {
+            break;
+        }
+
+        if (rpc_error_code != 0) {
+            LOG_ERR("Stream error: 0x%02x", rpc_error_code);
+            ble_central_set_stream_end_cb(NULL);
+            return -1;
+        }
+
+        struct command_packet resp_cmd;
+        if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
+            LOG_ERR("Stream response parse failed");
+            ble_central_set_stream_end_cb(NULL);
+            return -1;
+        }
+
+        if (on_resp(resp_cmd.data, resp_cmd.data_len, ctx) != 0) {
+            LOG_ERR("Stream response callback failed");
+            ble_central_set_stream_end_cb(NULL);
+            return -1;
+        }
+    }
+
+    ble_central_set_stream_end_cb(NULL);
+    return 0;
+}
+
+int blerpc_stream_send(const char *cmd_name, size_t msg_count,
+                       blerpc_next_msg_t next_msg, void *msg_ctx,
+                       const char *final_cmd_name,
+                       uint8_t *resp_data, size_t resp_size, size_t *resp_len)
+{
+    (void)final_cmd_name;
+    uint8_t name_len = (uint8_t)strlen(cmd_name);
+
+    /* Send each message */
+    for (size_t i = 0; i < msg_count; i++) {
+        size_t msg_len;
+        if (next_msg(i, shared_work_buf, sizeof(shared_work_buf), &msg_len, msg_ctx) != 0) {
+            LOG_ERR("next_msg callback failed at %zu", i);
+            return -1;
+        }
+
+        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len,
+                                        shared_work_buf, (uint16_t)msg_len,
+                                        shared_cmd_buf, sizeof(shared_cmd_buf));
+        if (cmd_len < 0) {
+            LOG_ERR("Command serialize failed at %zu", i);
+            return -1;
+        }
+
+        size_t send_len;
+        if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
+                                        sizeof(encrypt_buf), &send_len) != 0) {
+            LOG_ERR("Payload encryption failed at %zu", i);
+            return -1;
+        }
+
+        uint8_t tid = next_transaction_id();
+        uint16_t mtu = ble_central_get_mtu();
+        int rc = container_split_and_send(tid, encrypt_buf, send_len, mtu, send_container, NULL);
+        if (rc < 0) {
+            LOG_ERR("Container split/send failed at %zu: %d", i, rc);
+            return -1;
+        }
+    }
+
+    /* Send STREAM_END_C2P */
+    if (ble_central_send_stream_end_c2p() < 0) {
+        LOG_ERR("STREAM_END_C2P send failed");
+        return -1;
+    }
+
+    /* Wait for final response */
+    int rc = k_sem_take(&response_sem, K_SECONDS(10));
+    if (rc != 0) {
+        LOG_ERR("Final response timeout");
+        return -1;
+    }
+
+    if (rpc_error_code != 0) {
+        LOG_ERR("RPC error from peripheral: 0x%02x", rpc_error_code);
+        return -1;
+    }
+
+    struct command_packet resp_cmd;
+    if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
+        LOG_ERR("Response command parse failed");
+        return -1;
+    }
+
+    if (resp_cmd.data_len > resp_size) {
+        LOG_ERR("Response data too large: %u > %zu", resp_cmd.data_len, resp_size);
+        return -1;
+    }
+
+    memcpy(resp_data, resp_cmd.data, resp_cmd.data_len);
+    *resp_len = resp_cmd.data_len;
     return 0;
 }
 
@@ -155,33 +304,9 @@ static int test_echo(void)
 
     static const char msg[] = "Hello from nRF54L15 central!";
 
-    /* Encode request */
-    static blerpc_EchoRequest req;
-    memset(&req, 0, sizeof(req));
-    strncpy(req.message, msg, sizeof(req.message) - 1);
-
-    static uint8_t req_buf[blerpc_EchoRequest_size];
-    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
-    if (!pb_encode(&ostream, blerpc_EchoRequest_fields, &req)) {
-        LOG_ERR("Echo request encode failed");
-        return -1;
-    }
-
-    /* RPC call */
-    static uint8_t echo_resp_buf[blerpc_EchoResponse_size];
-    size_t resp_len;
-    if (rpc_call("echo", req_buf, ostream.bytes_written, echo_resp_buf, sizeof(echo_resp_buf),
-                 &resp_len) != 0) {
+    blerpc_EchoResponse resp;
+    if (blerpc_echo(msg, &resp) != 0) {
         LOG_ERR("Echo RPC failed");
-        return -1;
-    }
-
-    /* Decode response */
-    static blerpc_EchoResponse resp;
-    memset(&resp, 0, sizeof(resp));
-    pb_istream_t istream = pb_istream_from_buffer(echo_resp_buf, resp_len);
-    if (!pb_decode(&istream, blerpc_EchoResponse_fields, &resp)) {
-        LOG_ERR("Echo response decode failed");
         return -1;
     }
 
@@ -196,76 +321,22 @@ static int test_echo(void)
     return 0;
 }
 
-/* Callback for decoding FlashReadResponse.data (FT_CALLBACK field) */
-struct flash_read_decode_ctx {
-    uint8_t *buf;
-    size_t buf_size;
-    size_t decoded_len;
-};
-
-static bool flash_data_decode_cb(pb_istream_t *stream, const pb_field_t *field, void **arg)
-{
-    (void)field;
-    struct flash_read_decode_ctx *ctx = (struct flash_read_decode_ctx *)*arg;
-
-    size_t len = stream->bytes_left;
-    if (len > ctx->buf_size - ctx->decoded_len) {
-        LOG_ERR("Flash data too large");
-        return false;
-    }
-
-    if (!pb_read(stream, ctx->buf + ctx->decoded_len, len)) {
-        return false;
-    }
-    ctx->decoded_len += len;
-    return true;
-}
-
 static int test_flash_read(uint32_t length)
 {
     LOG_INF("=== FlashRead Test (len=%u) ===", length);
 
-    /* Encode request */
-    blerpc_FlashReadRequest req = blerpc_FlashReadRequest_init_zero;
-    req.address = 0x00000000;
-    req.length = length;
-
-    static uint8_t req_buf[blerpc_FlashReadRequest_size];
-    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
-    if (!pb_encode(&ostream, blerpc_FlashReadRequest_fields, &req)) {
-        LOG_ERR("FlashRead request encode failed");
-        return -1;
-    }
-
-    /* RPC call */
-    size_t resp_len;
-    if (rpc_call("flash_read", req_buf, ostream.bytes_written, shared_work_buf,
-                 sizeof(shared_work_buf), &resp_len) != 0) {
+    blerpc_FlashReadResponse resp;
+    size_t data_len;
+    if (blerpc_flash_read(0x00000000, length, &resp,
+                          shared_decode_buf, sizeof(shared_decode_buf), &data_len) != 0) {
         LOG_ERR("FlashRead RPC failed");
         return -1;
     }
 
-    /* Decode response */
-    struct flash_read_decode_ctx decode_ctx = {
-        .buf = shared_decode_buf,
-        .buf_size = sizeof(shared_decode_buf),
-        .decoded_len = 0,
-    };
+    LOG_INF("FlashRead response: addr=0x%08x, data_len=%zu", resp.address, data_len);
 
-    blerpc_FlashReadResponse resp = blerpc_FlashReadResponse_init_zero;
-    resp.data.funcs.decode = flash_data_decode_cb;
-    resp.data.arg = &decode_ctx;
-
-    pb_istream_t istream = pb_istream_from_buffer(shared_work_buf, resp_len);
-    if (!pb_decode(&istream, blerpc_FlashReadResponse_fields, &resp)) {
-        LOG_ERR("FlashRead response decode failed");
-        return -1;
-    }
-
-    LOG_INF("FlashRead response: addr=0x%08x, data_len=%zu", resp.address, decode_ctx.decoded_len);
-
-    if (decode_ctx.decoded_len != length) {
-        LOG_ERR("FlashRead length mismatch: expected %u, got %zu", length, decode_ctx.decoded_len);
+    if (data_len != length) {
+        LOG_ERR("FlashRead length mismatch: expected %u, got %zu", length, data_len);
         return -1;
     }
 
@@ -301,81 +372,19 @@ static int test_throughput(void)
     return 0;
 }
 
-/* Callback for encoding DataWriteRequest.data (FT_CALLBACK field) */
-struct data_write_encode_ctx {
-    uint32_t length;
-};
-
-static bool data_write_encode_cb(pb_ostream_t *stream, const pb_field_t *field, void *const *arg)
-{
-    struct data_write_encode_ctx *ctx = *(struct data_write_encode_ctx **)arg;
-
-    if (!pb_encode_tag_for_field(stream, field))
-        return false;
-    if (!pb_encode_varint(stream, ctx->length))
-        return false;
-
-    /* Write incrementing pattern bytes */
-    uint8_t chunk[256];
-    uint32_t remaining = ctx->length;
-    uint32_t offset = 0;
-    while (remaining > 0) {
-        uint32_t n = MIN(remaining, sizeof(chunk));
-        for (uint32_t i = 0; i < n; i++) {
-            chunk[i] = (uint8_t)((offset + i) & 0xFF);
-        }
-        if (!pb_write(stream, chunk, n))
-            return false;
-        offset += n;
-        remaining -= n;
-    }
-    return true;
-}
-
 static int test_data_write(uint32_t length)
 {
     LOG_INF("=== DataWrite Test (len=%u) ===", length);
 
-    struct data_write_encode_ctx encode_ctx = {.length = length};
-
-    blerpc_DataWriteRequest req = blerpc_DataWriteRequest_init_zero;
-    req.data.funcs.encode = data_write_encode_cb;
-    req.data.arg = &encode_ctx;
-
-    /* Pass 1: sizing */
-    pb_ostream_t sizing = PB_OSTREAM_SIZING;
-    if (!pb_encode(&sizing, blerpc_DataWriteRequest_fields, &req)) {
-        LOG_ERR("DataWrite request sizing failed");
-        return -1;
+    /* Build incrementing pattern data */
+    for (uint32_t i = 0; i < length; i++) {
+        shared_decode_buf[i] = (uint8_t)(i & 0xFF);
     }
 
-    /* Pass 2: encode */
-    if (sizing.bytes_written > sizeof(shared_work_buf)) {
-        LOG_ERR("DataWrite request too large: %zu > %zu", sizing.bytes_written,
-                sizeof(shared_work_buf));
-        return -1;
-    }
-
-    pb_ostream_t ostream = pb_ostream_from_buffer(shared_work_buf, sizeof(shared_work_buf));
-    if (!pb_encode(&ostream, blerpc_DataWriteRequest_fields, &req)) {
-        LOG_ERR("DataWrite request encode failed");
-        return -1;
-    }
-
-    /* RPC call */
-    static uint8_t dw_resp_buf[blerpc_DataWriteResponse_size];
-    size_t resp_len;
-    if (rpc_call("data_write", shared_work_buf, ostream.bytes_written, dw_resp_buf,
-                 sizeof(dw_resp_buf), &resp_len) != 0) {
+    blerpc_DataWriteResponse resp;
+    if (blerpc_data_write(shared_decode_buf, length,
+                          shared_work_buf, sizeof(shared_work_buf), &resp) != 0) {
         LOG_ERR("DataWrite RPC failed");
-        return -1;
-    }
-
-    /* Decode response */
-    blerpc_DataWriteResponse resp = blerpc_DataWriteResponse_init_zero;
-    pb_istream_t istream = pb_istream_from_buffer(dw_resp_buf, resp_len);
-    if (!pb_decode(&istream, blerpc_DataWriteResponse_fields, &resp)) {
-        LOG_ERR("DataWrite response decode failed");
         return -1;
     }
 
@@ -418,111 +427,30 @@ static int test_write_throughput(void)
     return 0;
 }
 
-/* ── Stream tests ────────────────────────────────────────────────────── */
-
-static uint32_t stream_resp_count;
-static K_SEM_DEFINE(stream_end_sem, 0, 1);
-
-static void on_stream_end(void)
-{
-    LOG_INF("STREAM_END_P2C received");
-    k_sem_give(&stream_end_sem);
-}
-
 static int test_counter_stream(void)
 {
     LOG_INF("=== CounterStream Test ===");
 
     const uint32_t count = 5;
+    blerpc_CounterStreamResponse results[10];
+    size_t result_count;
 
-    /* Register stream end callback */
-    ble_central_set_stream_end_cb(on_stream_end);
-    stream_resp_count = 0;
-
-    /* Encode request */
-    blerpc_CounterStreamRequest req = blerpc_CounterStreamRequest_init_zero;
-    req.count = count;
-
-    static uint8_t req_buf[blerpc_CounterStreamRequest_size];
-    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
-    if (!pb_encode(&ostream, blerpc_CounterStreamRequest_fields, &req)) {
-        LOG_ERR("CounterStream request encode failed");
+    if (blerpc_counter_stream(count, results, 10, &result_count) != 0) {
+        LOG_ERR("CounterStream failed");
         return -1;
     }
 
-    /* Send request (use rpc_call's sending part manually) */
-    int cmd_len =
-        command_serialize(COMMAND_TYPE_REQUEST, "counter_stream", 14, req_buf,
-                          (uint16_t)ostream.bytes_written, shared_cmd_buf, sizeof(shared_cmd_buf));
-    if (cmd_len < 0) {
-        LOG_ERR("Command serialize failed");
-        return -1;
-    }
-
-    /* Encrypt if encryption is active */
-    size_t cs_send_len;
-    if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
-                                    sizeof(encrypt_buf), &cs_send_len) != 0) {
-        LOG_ERR("CounterStream payload encryption failed");
-        return -1;
-    }
-
-    uint8_t tid = next_transaction_id();
-    uint16_t mtu = ble_central_get_mtu();
-    int rc = container_split_and_send(tid, encrypt_buf, cs_send_len, mtu, send_container, NULL);
-    if (rc < 0) {
-        LOG_ERR("Container split/send failed: %d", rc);
-        return -1;
-    }
-
-    /* Receive N responses */
-    for (uint32_t i = 0; i < count; i++) {
-        rc = k_sem_take(&response_sem, K_SECONDS(10));
-        if (rc != 0) {
-            LOG_ERR("Stream response %u timeout", i);
+    for (size_t i = 0; i < result_count; i++) {
+        if (results[i].seq != i || results[i].value != (int32_t)(i * 10)) {
+            LOG_ERR("CounterStream mismatch at %zu: seq=%u value=%d",
+                    i, results[i].seq, results[i].value);
             return -1;
         }
-
-        if (rpc_error_code != 0) {
-            LOG_ERR("Stream error: 0x%02x", rpc_error_code);
-            return -1;
-        }
-
-        /* Parse response */
-        struct command_packet resp_cmd;
-        if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
-            LOG_ERR("Response command parse failed at %u", i);
-            return -1;
-        }
-
-        blerpc_CounterStreamResponse resp = blerpc_CounterStreamResponse_init_zero;
-        pb_istream_t istream = pb_istream_from_buffer(resp_cmd.data, resp_cmd.data_len);
-        if (!pb_decode(&istream, blerpc_CounterStreamResponse_fields, &resp)) {
-            LOG_ERR("CounterStream response decode failed at %u", i);
-            return -1;
-        }
-
-        if (resp.seq != i || resp.value != (int32_t)(i * 10)) {
-            LOG_ERR("CounterStream mismatch at %u: seq=%u value=%d", i, resp.seq, resp.value);
-            return -1;
-        }
-
-        stream_resp_count++;
     }
 
-    /* Wait for STREAM_END_P2C */
-    rc = k_sem_take(&stream_end_sem, K_SECONDS(10));
-    if (rc != 0) {
-        LOG_ERR("STREAM_END_P2C timeout");
-        return -1;
-    }
-
-    /* Clear stream end callback */
-    ble_central_set_stream_end_cb(NULL);
-
-    LOG_INF("CounterStream: received %u responses", stream_resp_count);
-    if (stream_resp_count != count) {
-        LOG_ERR("CounterStream count mismatch: expected %u, got %u", count, stream_resp_count);
+    LOG_INF("CounterStream: received %zu responses", result_count);
+    if (result_count != count) {
+        LOG_ERR("CounterStream count mismatch: expected %u, got %zu", count, result_count);
         return -1;
     }
 
@@ -535,75 +463,16 @@ static int test_counter_upload(void)
     LOG_INF("=== CounterUpload Test ===");
 
     const uint32_t count = 5;
-
-    /* Send N counter_upload requests */
+    blerpc_CounterUploadRequest messages[5];
     for (uint32_t i = 0; i < count; i++) {
-        blerpc_CounterUploadRequest req = blerpc_CounterUploadRequest_init_zero;
-        req.seq = i;
-        req.value = (int32_t)(i * 10);
-
-        static uint8_t req_buf[blerpc_CounterUploadRequest_size];
-        pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));
-        if (!pb_encode(&ostream, blerpc_CounterUploadRequest_fields, &req)) {
-            LOG_ERR("CounterUpload request encode failed at %u", i);
-            return -1;
-        }
-
-        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, "counter_upload", 14, req_buf,
-                                        (uint16_t)ostream.bytes_written, shared_cmd_buf,
-                                        sizeof(shared_cmd_buf));
-        if (cmd_len < 0) {
-            LOG_ERR("Command serialize failed at %u", i);
-            return -1;
-        }
-
-        /* Encrypt if encryption is active */
-        size_t cu_send_len;
-        if (ble_central_encrypt_payload(shared_cmd_buf, (size_t)cmd_len, encrypt_buf,
-                                        sizeof(encrypt_buf), &cu_send_len) != 0) {
-            LOG_ERR("CounterUpload payload encryption failed at %u", i);
-            return -1;
-        }
-
-        uint8_t tid = next_transaction_id();
-        uint16_t mtu = ble_central_get_mtu();
-        int rc = container_split_and_send(tid, encrypt_buf, cu_send_len, mtu, send_container, NULL);
-        if (rc < 0) {
-            LOG_ERR("Container split/send failed at %u: %d", i, rc);
-            return -1;
-        }
+        messages[i] = (blerpc_CounterUploadRequest)blerpc_CounterUploadRequest_init_zero;
+        messages[i].seq = i;
+        messages[i].value = (int32_t)(i * 10);
     }
 
-    /* Send STREAM_END_C2P */
-    int rc = ble_central_send_stream_end_c2p();
-    if (rc < 0) {
-        LOG_ERR("STREAM_END_C2P send failed: %d", rc);
-        return -1;
-    }
-
-    /* Wait for final response */
-    rc = k_sem_take(&response_sem, K_SECONDS(10));
-    if (rc != 0) {
-        LOG_ERR("CounterUpload final response timeout");
-        return -1;
-    }
-
-    if (rpc_error_code != 0) {
-        LOG_ERR("CounterUpload error: 0x%02x", rpc_error_code);
-        return -1;
-    }
-
-    /* Parse response */
-    struct command_packet resp_cmd;
-    if (command_parse(response_buf, response_len, &resp_cmd) != 0) {
-        LOG_ERR("Response command parse failed");
-        return -1;
-    }
-
-    blerpc_CounterUploadResponse resp = blerpc_CounterUploadResponse_init_zero;
-    pb_istream_t istream = pb_istream_from_buffer(resp_cmd.data, resp_cmd.data_len);
-    if (!pb_decode(&istream, blerpc_CounterUploadResponse_fields, &resp)) {
-        LOG_ERR("CounterUpload response decode failed");
+    blerpc_CounterUploadResponse resp;
+    if (blerpc_counter_upload(messages, count, &resp) != 0) {
+        LOG_ERR("CounterUpload failed");
         return -1;
     }
 

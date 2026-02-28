@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../ble/ble_transport.dart';
 import '../client/blerpc_client.dart';
+import '../proto/blerpc.pb.dart';
 
 typedef LogCallback = void Function(String message);
 
@@ -76,18 +77,24 @@ class TestRunner {
         });
 
         await _runTest(client, 'counter_stream', () async {
-          final results = await client.counterStreamAll(5);
+          final results = await client.counterStream(count: 5);
           _check(
               results.length == 5, 'Expected 5 results, got ${results.length}');
           for (var i = 0; i < 5; i++) {
-            _check(results[i].$1 == i, 'Expected seq=$i, got ${results[i].$1}');
-            _check(results[i].$2 == i * 10,
-                'Expected value=${i * 10}, got ${results[i].$2}');
+            _check(
+                results[i].seq == i, 'Expected seq=$i, got ${results[i].seq}');
+            _check(results[i].value == i * 10,
+                'Expected value=${i * 10}, got ${results[i].value}');
           }
         });
 
         await _runTest(client, 'counter_upload', () async {
-          final resp = await client.counterUploadAll(5);
+          final messages = List.generate(5, (i) {
+            return CounterUploadRequest()
+              ..seq = i
+              ..value = i * 10;
+          });
+          final resp = await client.counterUpload(messages);
           _check(resp.receivedCount == 5,
               'Expected received_count=5, got ${resp.receivedCount}');
         });
@@ -185,14 +192,19 @@ class TestRunner {
     const count = 20;
 
     final sw1 = Stopwatch()..start();
-    final results = await client.counterStreamAll(count);
+    final results = await client.counterStream(count: count);
     final elapsed1 = sw1.elapsedMilliseconds;
     _check(results.length == count, 'stream count mismatch');
     _log(
         '[BENCH] counter_stream (P->C): $count items in ${elapsed1}ms (${(elapsed1 / count).toStringAsFixed(1)} ms/item)');
 
+    final messages = List.generate(count, (i) {
+      return CounterUploadRequest()
+        ..seq = i
+        ..value = i * 10;
+    });
     final sw2 = Stopwatch()..start();
-    final resp = await client.counterUploadAll(count);
+    final resp = await client.counterUpload(messages);
     final elapsed2 = sw2.elapsedMilliseconds;
     _check(resp.receivedCount == count, 'upload count mismatch');
     _log(

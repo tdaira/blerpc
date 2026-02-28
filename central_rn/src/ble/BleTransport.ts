@@ -1,4 +1,5 @@
 import { BleManager, Device, Characteristic, Subscription } from 'react-native-ble-plx';
+import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
 
 export const SERVICE_UUID = '12340001-0000-1000-8000-00805f9b34fb';
@@ -67,13 +68,20 @@ export class BleTransport {
   }
 
   async connect(scannedDevice: ScannedDevice): Promise<void> {
-    this._device = await scannedDevice.device.connect({ requestMTU: 247 });
+    // Connect using our own BleManager instance (not the Device from scan,
+    // which may be tied to a different BleManager that's been GC'd).
+    this._device = await this._manager.connectToDevice(scannedDevice.address, {
+      requestMTU: 247,
+    });
 
-    // Get negotiated MTU
-    this._mtu = this._device.mtu ?? 23;
+    // Discover services and characteristics.
+    this._device = await this._device.discoverAllServicesAndCharacteristics();
 
-    // Discover services and characteristics
-    await this._device.discoverAllServicesAndCharacteristics();
+    // On iOS, MTU is negotiated automatically but the value may not be
+    // available immediately.  requestMTU() on iOS is a no-op for negotiation
+    // but returns a fresh Device snapshot with the current native MTU.
+    const updated = await this._device.requestMTU(247);
+    this._mtu = updated.mtu ?? 23;
     const services = await this._device.services();
     let targetChar: Characteristic | null = null;
 

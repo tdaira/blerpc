@@ -82,7 +82,7 @@ final class TestRunner: ObservableObject {
                 }
 
                 await runTest(client: client, name: "counter_stream") {
-                    let results = try await client.counterStreamAll(count: 5)
+                    let results = try await client.counterStream(count: 5)
                     guard results.count == 5 else {
                         throw TestError.assertion("Expected 5 results, got \(results.count)")
                     }
@@ -99,7 +99,13 @@ final class TestRunner: ObservableObject {
                 }
 
                 await runTest(client: client, name: "counter_upload") {
-                    let resp = try await client.counterUploadAll(count: 5)
+                    let messages = try (0..<5).map { i -> Blerpc_CounterUploadRequest in
+                        var req = Blerpc_CounterUploadRequest()
+                        req.seq = UInt32(i)
+                        req.value = Int32(i * 10)
+                        return req
+                    }
+                    let resp = try await client.counterUpload(messages: messages)
                     guard resp.receivedCount == 5 else {
                         throw TestError.assertion(
                             "Expected received_count=5, got \(resp.receivedCount)"
@@ -211,7 +217,7 @@ final class TestRunner: ObservableObject {
 
         // counter_stream (P->C)
         let start1 = ContinuousClock.now
-        let results = try? await client.counterStreamAll(count: count)
+        let results = try? await client.counterStream(count: count)
         let elapsed1 = start1.duration(to: .now)
         let elapsedMs1 = Double(elapsed1.components.attoseconds) / 1e15 + Double(elapsed1.components.seconds) * 1000
         if let results = results {
@@ -220,8 +226,14 @@ final class TestRunner: ObservableObject {
         }
 
         // counter_upload (C->P)
+        let messages = (0..<Int(count)).compactMap { i -> Blerpc_CounterUploadRequest? in
+            var req = Blerpc_CounterUploadRequest()
+            req.seq = UInt32(i)
+            req.value = Int32(i * 10)
+            return req
+        }
         let start2 = ContinuousClock.now
-        let resp = try? await client.counterUploadAll(count: Int(count))
+        let resp = try? await client.counterUpload(messages: messages)
         let elapsed2 = start2.duration(to: .now)
         let elapsedMs2 = Double(elapsed2.components.attoseconds) / 1e15 + Double(elapsed2.components.seconds) * 1000
         if let resp = resp {

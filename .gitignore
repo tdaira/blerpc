@@ -29,5 +29,16 @@ local.properties
 xcuserdata/
 DerivedData/
 
+# Node.js
+node_modules/
+
+# React Native
+*.jsbundle
+.cxx/
+Pods/
+
+# CocoaPods local env
+.xcode.env.local
+
 # Encryption keys (NEVER commit private keys)
 keys.conf

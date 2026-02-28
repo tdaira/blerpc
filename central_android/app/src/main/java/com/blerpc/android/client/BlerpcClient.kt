@@ -339,27 +339,6 @@ class BlerpcClient(
         }
     }
 
-    suspend fun counterStreamAll(count: Int): List<Pair<Int, Int>> {
-        val req = blerpc.Blerpc.CounterStreamRequest.newBuilder().setCount(count).build()
-        val responses = streamReceive("counter_stream", req.toByteArray())
-        return responses.map { data ->
-            val resp = blerpc.Blerpc.CounterStreamResponse.parseFrom(data)
-            Pair(resp.seq, resp.value)
-        }
-    }
-
-    suspend fun counterUploadAll(count: Int): blerpc.Blerpc.CounterUploadResponse {
-        val messages = (0 until count).map { i ->
-            blerpc.Blerpc.CounterUploadRequest.newBuilder()
-                .setSeq(i)
-                .setValue(i * 10)
-                .build()
-                .toByteArray()
-        }
-        val respData = streamSend("counter_upload", messages, "counter_upload")
-        return blerpc.Blerpc.CounterUploadResponse.parseFrom(respData)
-    }
-
     fun disconnect() {
         transport.disconnect()
     }

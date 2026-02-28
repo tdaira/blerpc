@@ -15,7 +15,6 @@ import {
   CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
   BLERPC_ERROR_RESPONSE_TOO_LARGE,
 } from '@blerpc/protocol-rn';
-import { blerpc } from '../proto/blerpc';
 import { BleTransport, ScannedDevice } from '../ble/BleTransport';
 import { GeneratedClient } from './GeneratedClient';
 
@@ -378,29 +377,6 @@ export class BlerpcClient extends GeneratedClient {
         return resp.data;
       }
     }
-  }
-
-  // Streaming convenience methods (manually implemented, not auto-generated)
-
-  async counterStreamAll(count: number): Promise<Array<[number, number]>> {
-    const req = blerpc.CounterStreamRequest.create({ count });
-    const responses = await this.streamReceive(
-      'counter_stream',
-      blerpc.CounterStreamRequest.encode(req).finish(),
-    );
-    return responses.map((data) => {
-      const resp = blerpc.CounterStreamResponse.decode(data);
-      return [resp.seq, resp.value];
-    });
-  }
-
-  async counterUploadAll(count: number): Promise<blerpc.CounterUploadResponse> {
-    const messages = Array.from({ length: count }, (_, i) => {
-      const req = blerpc.CounterUploadRequest.create({ seq: i, value: i * 10 });
-      return blerpc.CounterUploadRequest.encode(req).finish();
-    });
-    const respData = await this.streamSend('counter_upload', messages, 'counter_upload');
-    return blerpc.CounterUploadResponse.decode(respData);
   }
 
   disconnect(): void {

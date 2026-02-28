@@ -17,14 +17,14 @@ export class TestRunner {
     return this._running;
   }
 
-  async runAll(options: { iterations?: number; device?: ScannedDevice } = {}): Promise<void> {
+  async runAll(options: { iterations?: number; device?: ScannedDevice; client?: BlerpcClient } = {}): Promise<void> {
     if (this._running) return;
     this._running = true;
     this._passCount = 0;
     this._failCount = 0;
 
     const iterations = options.iterations ?? 1;
-    const client = new BlerpcClient();
+    const client = options.client ?? new BlerpcClient();
 
     try {
       let target: ScannedDevice;
@@ -75,16 +75,23 @@ export class TestRunner {
         });
 
         await this._runTest(client, 'counter_stream', async () => {
-          const results = await client.counterStreamAll(5);
+          const results = await client.counterStream({ count: 5 });
           this._check(results.length === 5, `Expected 5 results, got ${results.length}`);
           for (let i = 0; i < 5; i++) {
-            this._check(results[i][0] === i, `Expected seq=${i}, got ${results[i][0]}`);
-            this._check(results[i][1] === i * 10, `Expected value=${i * 10}, got ${results[i][1]}`);
+            this._check(results[i].seq === i, `Expected seq=${i}, got ${results[i].seq}`);
+            this._check(
+              results[i].value === i * 10,
+              `Expected value=${i * 10}, got ${results[i].value}`,
+            );
           }
         });
 
         await this._runTest(client, 'counter_upload', async () => {
-          const resp = await client.counterUploadAll(5);
+          const messages = Array.from({ length: 5 }, (_, i) => ({
+            seq: i,
+            value: i * 10,
+          }));
+          const resp = await client.counterUpload(messages);
           this._check(
             resp.receivedCount === 5,
             `Expected received_count=5, got ${resp.receivedCount}`,
@@ -190,15 +197,19 @@ export class TestRunner {
     const count = 20;
 
     const start1 = Date.now();
-    const results = await client.counterStreamAll(count);
+    const results = await client.counterStream({ count });
     const elapsed1 = Date.now() - start1;
     this._check(results.length === count, 'stream count mismatch');
     this._log(
       `[BENCH] counter_stream (P->C): ${count} items in ${elapsed1}ms (${(elapsed1 / count).toFixed(1)} ms/item)`,
     );
 
+    const messages = Array.from({ length: count }, (_, i) => ({
+      seq: i,
+      value: i * 10,
+    }));
     const start2 = Date.now();
-    const resp = await client.counterUploadAll(count);
+    const resp = await client.counterUpload(messages);
     const elapsed2 = Date.now() - start2;
     this._check(resp.receivedCount === count, 'upload count mismatch');
     this._log(

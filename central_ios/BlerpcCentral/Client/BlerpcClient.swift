@@ -307,34 +307,6 @@ final class BlerpcClient: GeneratedClientProtocol {
         }
     }
 
-    func counterStreamAll(count: UInt32) async throws -> [(seq: UInt32, value: Int32)] {
-        var req = Blerpc_CounterStreamRequest()
-        req.count = count
-        let responses = try await streamReceive(
-            cmdName: "counter_stream",
-            requestData: try req.serializedData()
-        )
-        return try responses.map { data in
-            let resp = try Blerpc_CounterStreamResponse(serializedBytes: data)
-            return (seq: resp.seq, value: resp.value)
-        }
-    }
-
-    func counterUploadAll(count: Int) async throws -> Blerpc_CounterUploadResponse {
-        let messages = try (0..<count).map { i -> Data in
-            var req = Blerpc_CounterUploadRequest()
-            req.seq = UInt32(i)
-            req.value = Int32(i * 10)
-            return try req.serializedData()
-        }
-        let respData = try await streamSend(
-            cmdName: "counter_upload",
-            messages: messages,
-            finalCmdName: "counter_upload"
-        )
-        return try Blerpc_CounterUploadResponse(serializedBytes: respData)
-    }
-
     func disconnect() {
         transport.disconnect()
     }
