@@ -21,6 +21,7 @@ targets:
       path: BlerpcCentral/Info.plist
       properties:
         CFBundleDisplayName: bleRPC Central
+        UILaunchScreen: {}
         NSBluetoothAlwaysUsageDescription: bleRPC Central needs Bluetooth to communicate with BLE peripherals.
         CFBundleURLTypes:
           - CFBundleURLSchemes:

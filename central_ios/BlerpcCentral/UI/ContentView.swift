@@ -7,7 +7,7 @@ private let bgCode = Color(red: 0x1E/255.0, green: 0x20/255.0, blue: 0x30/255.0)
 private let textPrimary = Color(red: 0xC0/255.0, green: 0xCA/255.0, blue: 0xF5/255.0)
 private let textSecondary = Color(red: 0xA9/255.0, green: 0xB1/255.0, blue: 0xD6/255.0)
 private let accent = Color(red: 0x00/255.0, green: 0x82/255.0, blue: 0xFC/255.0)
-private let border = Color(red: 0x3B/255.0, green: 0x42/255.0, blue: 0x61/255.0)
+private let borderColor = Color(red: 0x3B/255.0, green: 0x42/255.0, blue: 0x61/255.0)
 private let success = Color(red: 0x9E/255.0, green: 0xCE/255.0, blue: 0x6A/255.0)
 private let error = Color(red: 0xF7/255.0, green: 0x76/255.0, blue: 0x8E/255.0)
 
@@ -109,7 +109,7 @@ struct ContentView: View {
                                 }
                                 .disabled(isRunning)
                                 Divider()
-                                    .background(border)
+                                    .background(borderColor)
                                     .padding(.leading, 16)
                             }
                         }
@@ -119,7 +119,7 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(border, lineWidth: 1)
+                            .stroke(borderColor, lineWidth: 1)
                     )
                     .padding(.horizontal, 16)
                 }
@@ -159,7 +159,7 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(border, lineWidth: 1)
+                        .stroke(borderColor, lineWidth: 1)
                 )
                 .padding(.horizontal, 16)
                 .onChange(of: testRunner.logs.count) { newCount in
@@ -172,7 +172,7 @@ struct ContentView: View {
             }
         }
         .padding(.bottom, 16)
-        .background(bgPrimary)
+        .background(bgPrimary.ignoresSafeArea())
     }
 
     private func colorForLine(_ line: String) -> Color {

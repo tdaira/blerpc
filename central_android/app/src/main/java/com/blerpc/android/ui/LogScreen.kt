@@ -1,5 +1,8 @@
 package com.blerpc.android.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,12 +11,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -22,6 +29,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blerpc.android.ble.ScannedDevice
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // blerpc.net dark theme colors
 private val BgPrimary = Color(0xFF1A1B26)
@@ -158,12 +167,47 @@ fun LogScreen(
                             fontFamily = FontFamily.Monospace
                         )
                     }
-                    HorizontalDivider(color = Border)
+                    Divider(color = Border)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var showCopied by remember { mutableStateOf(false) }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("logs", logs.joinToString("\n")))
+                    showCopied = true
+                    scope.launch {
+                        delay(1500)
+                        showCopied = false
+                    }
+                },
+                enabled = logs.isNotEmpty()
+            ) {
+                Icon(
+                    imageVector = if (showCopied) Icons.Default.Check else Icons.Default.Share,
+                    contentDescription = null,
+                    tint = if (logs.isEmpty()) TextSecondary else Accent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = if (showCopied) "Copied!" else "Copy Logs",
+                    color = if (logs.isEmpty()) TextSecondary else Accent,
+                    fontSize = 13.sp
+                )
+            }
+        }
 
         LazyColumn(
             state = listState,

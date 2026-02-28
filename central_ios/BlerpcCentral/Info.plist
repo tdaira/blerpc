@@ -30,6 +30,8 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>BlerpcCentral needs Bluetooth to communicate with BLE peripherals.</string>
+	<string>bleRPC Central needs Bluetooth to communicate with BLE peripherals.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
 </dict>
 </plist>
