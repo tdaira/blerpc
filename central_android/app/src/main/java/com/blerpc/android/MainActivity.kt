@@ -81,17 +81,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     },
-                    onRunTests = {
-                        isRunning = true
-                        scannedDevices = emptyList()
-                        scope.launch {
-                            try {
-                                testRunner.runAll()
-                            } finally {
-                                isRunning = false
-                            }
-                        }
-                    },
                     onSelectDevice = { device ->
                         isRunning = true
                         scannedDevices = emptyList()

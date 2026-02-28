@@ -51,7 +51,6 @@ fun LogScreen(
     isScanning: Boolean,
     scannedDevices: List<ScannedDevice>,
     onScan: () -> Unit,
-    onRunTests: () -> Unit,
     onSelectDevice: (ScannedDevice) -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -84,37 +83,18 @@ fun LogScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Button(
+            onClick = onScan,
+            enabled = !isScanning && !isRunning,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Accent,
+                contentColor = Color.White,
+                disabledContainerColor = BgSecondary,
+                disabledContentColor = TextSecondary
+            ),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Button(
-                onClick = onScan,
-                enabled = !isScanning && !isRunning,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = Color.White,
-                    disabledContainerColor = BgSecondary,
-                    disabledContentColor = TextSecondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(if (isScanning) "Scanning..." else "Scan")
-            }
-
-            Button(
-                onClick = onRunTests,
-                enabled = !isRunning && !isScanning,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = Color.White,
-                    disabledContainerColor = BgSecondary,
-                    disabledContentColor = TextSecondary
-                ),
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(if (isRunning) "Running..." else "Run Tests")
-            }
+            Text(if (isScanning) "Scanning..." else "Scan")
         }
 
         if (scannedDevices.isNotEmpty()) {

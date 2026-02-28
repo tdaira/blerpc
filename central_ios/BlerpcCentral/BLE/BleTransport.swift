@@ -27,15 +27,17 @@ struct ScannedDevice: Identifiable {
 }
 
 final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    private var centralManager: CBCentralManager?
+    /// Shared CBCentralManager — CoreBluetooth requires connecting via the same
+    /// CBCentralManager that discovered the peripheral.
+    private static var sharedCentralManager: CBCentralManager?
+    private static let sharedBleQueue = DispatchQueue(label: "com.blerpc.ble", qos: .userInitiated)
+    /// The transport instance currently acting as CBCentralManagerDelegate.
+    private static weak var activeDelegate: BleTransport?
+
     private var peripheral: CBPeripheral?
     private var writeChar: CBCharacteristic?
     private(set) var mtu: Int = 23
     var isConnected: Bool { peripheral != nil }
-
-    /// Serial queue for all CoreBluetooth delegate callbacks, ensuring
-    /// thread-safe access to continuations and state.
-    private let bleQueue = DispatchQueue(label: "com.blerpc.ble", qos: .userInitiated)
 
     private var notifyContinuation: AsyncStream<Data>.Continuation?
     private var notifyIterator: AsyncStream<Data>.AsyncIterator?
@@ -54,16 +56,19 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
     }
 
     private func ensureCentralManager() async throws -> CBCentralManager {
-        if let cm = centralManager {
+        // Take over as the active delegate so callbacks route to this instance.
+        BleTransport.activeDelegate = self
+
+        if let cm = BleTransport.sharedCentralManager {
+            cm.delegate = self
             if cm.state == .poweredOn { return cm }
-            // Wait for powered-on state
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
                 self.stateContinuation = cont
             }
             return cm
         }
-        let cm = CBCentralManager(delegate: self, queue: bleQueue)
-        self.centralManager = cm
+        let cm = CBCentralManager(delegate: self, queue: BleTransport.sharedBleQueue)
+        BleTransport.sharedCentralManager = cm
         if cm.state != .poweredOn {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
                 self.stateContinuation = cont
@@ -180,7 +185,7 @@ final class BleTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelega
 
     func disconnect() {
         notifyContinuation?.finish()
-        if let p = peripheral, let cm = centralManager {
+        if let p = peripheral, let cm = BleTransport.sharedCentralManager {
             cm.cancelPeripheralConnection(p)
         }
         peripheral = nil
