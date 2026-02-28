@@ -1,5 +1,16 @@
 import SwiftUI
 
+// blerpc.net dark theme colors
+private let bgPrimary = Color(red: 0x1A/255.0, green: 0x1B/255.0, blue: 0x26/255.0)
+private let bgSecondary = Color(red: 0x24/255.0, green: 0x28/255.0, blue: 0x3B/255.0)
+private let bgCode = Color(red: 0x1E/255.0, green: 0x20/255.0, blue: 0x30/255.0)
+private let textPrimary = Color(red: 0xC0/255.0, green: 0xCA/255.0, blue: 0xF5/255.0)
+private let textSecondary = Color(red: 0xA9/255.0, green: 0xB1/255.0, blue: 0xD6/255.0)
+private let accent = Color(red: 0x00/255.0, green: 0x82/255.0, blue: 0xFC/255.0)
+private let border = Color(red: 0x3B/255.0, green: 0x42/255.0, blue: 0x61/255.0)
+private let success = Color(red: 0x9E/255.0, green: 0xCE/255.0, blue: 0x6A/255.0)
+private let error = Color(red: 0xF7/255.0, green: 0x76/255.0, blue: 0x8E/255.0)
+
 struct ContentView: View {
     @ObservedObject var testRunner: TestRunner
     @State private var isRunning = false
@@ -9,9 +20,18 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("blerpc iOS Central")
-                .font(.title)
-                .padding(.top, 16)
+            HStack(spacing: 0) {
+                Text("ble")
+                    .font(.system(size: 28, weight: .black))
+                    .foregroundColor(accent)
+                Text("RPC")
+                    .font(.system(size: 28, weight: .black))
+                    .foregroundColor(textPrimary)
+                Text(" Central")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundColor(textPrimary)
+            }
+            .padding(.top, 16)
 
             HStack(spacing: 12) {
                 Button(action: {
@@ -29,8 +49,10 @@ struct ContentView: View {
                 }) {
                     Text(isScanning ? "Scanning..." : "Scan")
                         .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(accent)
                 .disabled(isScanning || isRunning)
 
                 Button(action: {
@@ -42,8 +64,10 @@ struct ContentView: View {
                 }) {
                     Text(isRunning ? "Running..." : "Run Tests")
                         .frame(maxWidth: .infinity)
+                        .foregroundColor(.white)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(accent)
                 .disabled(isRunning || isScanning)
             }
             .padding(.horizontal, 16)
@@ -51,7 +75,8 @@ struct ContentView: View {
             if !scannedDevices.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Devices (\(scannedDevices.count))")
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(textPrimary)
                         .padding(.horizontal, 16)
 
                     ScrollView {
@@ -69,27 +94,33 @@ struct ContentView: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(device.name ?? "Unknown")
                                                 .font(.system(size: 15, weight: .medium))
-                                                .foregroundColor(.primary)
+                                                .foregroundColor(textPrimary)
                                             Text(device.id.uuidString)
                                                 .font(.system(size: 11, design: .monospaced))
-                                                .foregroundColor(.secondary)
+                                                .foregroundColor(textSecondary)
                                         }
                                         Spacer()
                                         Text("\(device.rssi) dBm")
                                             .font(.system(size: 13, design: .monospaced))
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(textSecondary)
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
                                 }
                                 .disabled(isRunning)
-                                Divider().padding(.leading, 16)
+                                Divider()
+                                    .background(border)
+                                    .padding(.leading, 16)
                             }
                         }
                     }
                     .frame(maxHeight: 200)
-                    .background(Color(UIColor.secondarySystemBackground))
+                    .background(bgSecondary)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(border, lineWidth: 1)
+                    )
                     .padding(.horizontal, 16)
                 }
             }
@@ -106,6 +137,7 @@ struct ContentView: View {
                 }) {
                     Label(showCopied ? "Copied!" : "Copy Logs", systemImage: showCopied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 13))
+                        .foregroundColor(accent)
                 }
                 .disabled(testRunner.logs.isEmpty)
             }
@@ -113,7 +145,7 @@ struct ContentView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
+                    LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(testRunner.logs.enumerated()), id: \.offset) { index, line in
                             Text(line)
                                 .foregroundColor(colorForLine(line))
@@ -121,10 +153,14 @@ struct ContentView: View {
                                 .id(index)
                         }
                     }
-                    .padding(8)
+                    .padding(12)
                 }
-                .background(Color(white: 0.12))
+                .background(bgCode)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(border, lineWidth: 1)
+                )
                 .padding(.horizontal, 16)
                 .onChange(of: testRunner.logs.count) { newCount in
                     if newCount > 0 {
@@ -136,17 +172,18 @@ struct ContentView: View {
             }
         }
         .padding(.bottom, 16)
+        .background(bgPrimary)
     }
 
     private func colorForLine(_ line: String) -> Color {
         if line.hasPrefix("[PASS]") {
-            return Color(red: 0.31, green: 0.79, blue: 0.69)
+            return success
         } else if line.hasPrefix("[FAIL]") || line.hasPrefix("[ERROR]") {
-            return Color(red: 1.0, green: 0.42, blue: 0.42)
+            return error
         } else if line.hasPrefix("[BENCH]") {
-            return Color(red: 0.6, green: 0.8, blue: 1.0)
+            return accent
         } else {
-            return Color(white: 0.83)
+            return textPrimary
         }
     }
 }

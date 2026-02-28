@@ -30,10 +30,10 @@ class TestRunner {
       if (device != null) {
         target = device;
       } else {
-        _log('Scanning for blerpc peripherals...');
+        _log('Scanning for bleRPC peripherals...');
         final devices = await client.scan();
         if (devices.isEmpty) {
-          _log('[ERROR] No blerpc devices found');
+          _log('[ERROR] No bleRPC devices found');
           _running = false;
           return;
         }

@@ -9,6 +9,18 @@ import 'test/test_runner.dart';
 
 const _autoRun = bool.fromEnvironment('AUTO_RUN', defaultValue: false);
 
+// blerpc.net dark theme colors
+const _bgPrimary = Color(0xFF1A1B26);
+const _bgSecondary = Color(0xFF24283B);
+const _bgCode = Color(0xFF1E2030);
+const _textPrimary = Color(0xFFC0CAF5);
+const _textSecondary = Color(0xFFA9B1D6);
+const _accent = Color(0xFF0082FC);
+const _border = Color(0xFF3B4261);
+const _success = Color(0xFF9ECE6A);
+const _error = Color(0xFFF7768E);
+const _navBg = Color(0xFF16161E);
+
 void main() {
   runApp(const BlerpcCentralApp());
 }
@@ -19,9 +31,38 @@ class BlerpcCentralApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'blerpc Central',
+      title: 'bleRPC Central',
       theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: _bgPrimary,
+        colorScheme: const ColorScheme.dark(
+          primary: _accent,
+          onPrimary: Colors.white,
+          surface: _bgPrimary,
+          onSurface: _textPrimary,
+          secondary: _accent,
+          outline: _border,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _navBg,
+          foregroundColor: _textPrimary,
+          elevation: 0,
+        ),
+        dividerTheme: const DividerThemeData(color: _border),
+        chipTheme: ChipThemeData(
+          backgroundColor: _bgSecondary,
+          labelStyle: const TextStyle(color: _textPrimary),
+          side: const BorderSide(color: _border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _accent,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: _bgSecondary,
+            disabledForegroundColor: _textSecondary,
+          ),
+        ),
         useMaterial3: true,
       ),
       home: const HomePage(),
@@ -130,11 +171,23 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('blerpc Central')),
+      appBar: AppBar(
+        title: Text.rich(TextSpan(children: [
+          const TextSpan(
+              text: 'ble',
+              style: TextStyle(color: _accent, fontWeight: FontWeight.w900)),
+          TextSpan(
+              text: 'RPC',
+              style:
+                  TextStyle(color: _textPrimary, fontWeight: FontWeight.w900)),
+          const TextSpan(
+              text: ' Central', style: TextStyle(fontWeight: FontWeight.w400)),
+        ])),
+      ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(12.0),
             child: Row(
               children: [
                 ElevatedButton.icon(
@@ -143,7 +196,8 @@ class _HomePageState extends State<HomePage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.bluetooth_searching),
                   label: const Text('Scan'),
                 ),
@@ -171,34 +225,49 @@ class _HomePageState extends State<HomePage> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: _logs.isEmpty
-                ? const Center(
-                    child: Text('Scan for devices, then tap to run tests'))
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(8),
-                    itemCount: _logs.length,
-                    itemBuilder: (context, index) {
-                      final line = _logs[index];
-                      Color? color;
-                      if (line.startsWith('[PASS]')) {
-                        color = Colors.green;
-                      } else if (line.startsWith('[FAIL]') ||
-                          line.startsWith('[ERROR]')) {
-                        color = Colors.red;
-                      } else if (line.startsWith('[BENCH]')) {
-                        color = Colors.blue;
-                      }
-                      return Text(
-                        line,
-                        style: TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                          color: color,
-                        ),
-                      );
-                    },
-                  ),
+            child: Container(
+              margin: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _bgCode,
+                border: Border.all(color: _border),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: _logs.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Scan for devices, then tap to run tests',
+                        style: TextStyle(color: _textSecondary),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _logs.length,
+                      itemBuilder: (context, index) {
+                        final line = _logs[index];
+                        Color color = _textPrimary;
+                        if (line.startsWith('[PASS]')) {
+                          color = _success;
+                        } else if (line.startsWith('[FAIL]') ||
+                            line.startsWith('[ERROR]')) {
+                          color = _error;
+                        } else if (line.startsWith('[BENCH]')) {
+                          color = _accent;
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          child: Text(
+                            line,
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                              color: color,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ),
         ],
       ),
