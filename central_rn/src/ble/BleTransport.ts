@@ -1,5 +1,4 @@
 import { BleManager, Device, Characteristic, Subscription } from 'react-native-ble-plx';
-import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
 
 export const SERVICE_UUID = '12340001-0000-1000-8000-00805f9b34fb';

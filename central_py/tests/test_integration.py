@@ -246,7 +246,10 @@ async def test_counter_stream(client):
     assert len(results) == count
     for i, resp in enumerate(results):
         assert resp.seq == i, f"seq mismatch at {i}: expected {i}, got {resp.seq}"
-        assert resp.value == i * 10, f"value mismatch at {i}: expected {i * 10}, got {resp.value}"
+        expected = i * 10
+        assert resp.value == expected, (
+            f"value mismatch at {i}: expected {expected}, got {resp.value}"
+        )
 
 
 @pytest.mark.asyncio

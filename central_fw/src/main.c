@@ -222,10 +222,9 @@ int blerpc_stream_receive(const char *cmd_name, const uint8_t *req_data, size_t 
     return 0;
 }
 
-int blerpc_stream_send(const char *cmd_name, size_t msg_count,
-                       blerpc_next_msg_t next_msg, void *msg_ctx,
-                       const char *final_cmd_name,
-                       uint8_t *resp_data, size_t resp_size, size_t *resp_len)
+int blerpc_stream_send(const char *cmd_name, size_t msg_count, blerpc_next_msg_t next_msg,
+                       void *msg_ctx, const char *final_cmd_name, uint8_t *resp_data,
+                       size_t resp_size, size_t *resp_len)
 {
     (void)final_cmd_name;
     uint8_t name_len = (uint8_t)strlen(cmd_name);
@@ -238,9 +237,8 @@ int blerpc_stream_send(const char *cmd_name, size_t msg_count,
             return -1;
         }
 
-        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len,
-                                        shared_work_buf, (uint16_t)msg_len,
-                                        shared_cmd_buf, sizeof(shared_cmd_buf));
+        int cmd_len = command_serialize(COMMAND_TYPE_REQUEST, cmd_name, name_len, shared_work_buf,
+                                        (uint16_t)msg_len, shared_cmd_buf, sizeof(shared_cmd_buf));
         if (cmd_len < 0) {
             LOG_ERR("Command serialize failed at %zu", i);
             return -1;
@@ -327,8 +325,8 @@ static int test_flash_read(uint32_t length)
 
     blerpc_FlashReadResponse resp;
     size_t data_len;
-    if (blerpc_flash_read(0x00000000, length, &resp,
-                          shared_decode_buf, sizeof(shared_decode_buf), &data_len) != 0) {
+    if (blerpc_flash_read(0x00000000, length, &resp, shared_decode_buf, sizeof(shared_decode_buf),
+                          &data_len) != 0) {
         LOG_ERR("FlashRead RPC failed");
         return -1;
     }
@@ -382,8 +380,8 @@ static int test_data_write(uint32_t length)
     }
 
     blerpc_DataWriteResponse resp;
-    if (blerpc_data_write(shared_decode_buf, length,
-                          shared_work_buf, sizeof(shared_work_buf), &resp) != 0) {
+    if (blerpc_data_write(shared_decode_buf, length, shared_work_buf, sizeof(shared_work_buf),
+                          &resp) != 0) {
         LOG_ERR("DataWrite RPC failed");
         return -1;
     }
@@ -442,8 +440,8 @@ static int test_counter_stream(void)
 
     for (size_t i = 0; i < result_count; i++) {
         if (results[i].seq != i || results[i].value != (int32_t)(i * 10)) {
-            LOG_ERR("CounterStream mismatch at %zu: seq=%u value=%d",
-                    i, results[i].seq, results[i].value);
+            LOG_ERR("CounterStream mismatch at %zu: seq=%u value=%d", i, results[i].seq,
+                    results[i].value);
             return -1;
         }
     }

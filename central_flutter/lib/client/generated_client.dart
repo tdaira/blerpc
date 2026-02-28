@@ -37,10 +37,13 @@ mixin GeneratedClientMixin {
     final req = CounterStreamRequest()..count = count;
     final responses = await streamReceive(
         'counter_stream', Uint8List.fromList(req.writeToBuffer()));
-    return responses.map((data) => CounterStreamResponse.fromBuffer(data)).toList();
+    return responses
+        .map((data) => CounterStreamResponse.fromBuffer(data))
+        .toList();
   }
 
-  Future<CounterUploadResponse> counterUpload(List<CounterUploadRequest> messages) async {
+  Future<CounterUploadResponse> counterUpload(
+      List<CounterUploadRequest> messages) async {
     final raw =
         messages.map((m) => Uint8List.fromList(m.writeToBuffer())).toList();
     final respData = await streamSend('counter_upload', raw, 'counter_upload');

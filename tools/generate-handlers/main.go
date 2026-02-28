@@ -592,7 +592,7 @@ func generatePyClient(commands []Command, streaming map[string]string) string {
 			b.WriteString(fmt.Sprintf("        \"\"\"P2C stream: %s.\"\"\"\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("        req = %s(%s)\n", reqCls, kwargsStr))
 			b.WriteString("        results = []\n")
-			b.WriteString(fmt.Sprintf("        async for data in self.stream_receive(\n"))
+			b.WriteString("        async for data in self.stream_receive(\n")
 			b.WriteString(fmt.Sprintf("            \"%s\", req.SerializeToString()\n", cmd.Snake))
 			b.WriteString("        ):\n")
 			b.WriteString(fmt.Sprintf("            resp = %s()\n", respCls))
@@ -1014,12 +1014,15 @@ func generateDartClient(commands []Command, streaming map[string]string) string 
 				}
 			}
 
-			b.WriteString(fmt.Sprintf("    final responses = await streamReceive(\n"))
+			b.WriteString("    final responses = await streamReceive(\n")
 			b.WriteString(fmt.Sprintf("        '%s', Uint8List.fromList(req.writeToBuffer()));\n", cmd.Snake))
-			b.WriteString(fmt.Sprintf("    return responses.map((data) => %s.fromBuffer(data)).toList();\n", respCls))
+			b.WriteString("    return responses\n")
+			b.WriteString(fmt.Sprintf("        .map((data) => %s.fromBuffer(data))\n", respCls))
+			b.WriteString("        .toList();\n")
 			b.WriteString("  }\n")
 		} else {
-			b.WriteString(fmt.Sprintf("  Future<%s> %s(List<%s> messages) async {\n", respCls, methodName, reqCls))
+			b.WriteString(fmt.Sprintf("  Future<%s> %s(\n", respCls, methodName))
+			b.WriteString(fmt.Sprintf("      List<%s> messages) async {\n", reqCls))
 			b.WriteString("    final raw =\n")
 			b.WriteString("        messages.map((m) => Uint8List.fromList(m.writeToBuffer())).toList();\n")
 			b.WriteString(fmt.Sprintf("    final respData = await streamSend('%s', raw, '%s');\n", cmd.Snake, cmd.Snake))
@@ -1171,7 +1174,7 @@ func generateTsClient(commands []Command, streaming map[string]string) string {
 				b.WriteString(fmt.Sprintf("    const req = %s.create({});\n", reqCls))
 			}
 
-			b.WriteString(fmt.Sprintf("    const responses = await this.streamReceive(\n"))
+			b.WriteString("    const responses = await this.streamReceive(\n")
 			b.WriteString(fmt.Sprintf("      '%s',\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("      %s.encode(req).finish(),\n", reqCls))
 			b.WriteString("    );\n")
@@ -1180,7 +1183,7 @@ func generateTsClient(commands []Command, streaming map[string]string) string {
 		} else {
 			iReqCls := "blerpc.I" + cmd.RequestMsg
 			b.WriteString(fmt.Sprintf("  async %s(messages: %s[]): Promise<%s> {\n", methodName, iReqCls, respCls))
-			b.WriteString(fmt.Sprintf("    const raw = messages.map((m) =>\n"))
+			b.WriteString("    const raw = messages.map((m) =>\n")
 			b.WriteString(fmt.Sprintf("      %s.encode(%s.create(m)).finish(),\n", reqCls, reqCls))
 			b.WriteString("    );\n")
 			b.WriteString(fmt.Sprintf("    const respData = await this.streamSend('%s', raw, '%s');\n", cmd.Snake, cmd.Snake))
@@ -1541,7 +1544,7 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 
 			// Encode request
 			if hasCbReq {
-				b.WriteString(fmt.Sprintf("    pb_ostream_t sizing = PB_OSTREAM_SIZING;\n"))
+				b.WriteString("    pb_ostream_t sizing = PB_OSTREAM_SIZING;\n")
 				b.WriteString(fmt.Sprintf("    if (!pb_encode(&sizing, %s_fields, &req)) return -1;\n", reqMsg))
 				b.WriteString("    if (sizing.bytes_written > work_buf_size) return -1;\n")
 				b.WriteByte('\n')

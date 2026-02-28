@@ -22,7 +22,6 @@ from blerpc_protocol.container import (
 )
 from blerpc_protocol.crypto import BlerpcCryptoSession, central_perform_key_exchange
 
-from .generated import blerpc_pb2
 from .generated.generated_client import GeneratedClientMixin
 from .transport import SERVICE_UUID, BleTransport, ScannedDevice
 
