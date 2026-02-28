@@ -7,8 +7,8 @@ import {
   FlatList,
   Platform,
   PermissionsAndroid,
-  Clipboard,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { ScannedDevice } from './ble/BleTransport';
 import { BlerpcClient } from './client/BlerpcClient';
 import { TestRunner } from './test/TestRunner';

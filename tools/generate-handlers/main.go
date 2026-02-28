@@ -673,7 +673,7 @@ func generateKotlinClient(commands []Command, streaming map[string]string) strin
 			}
 			def, ok := kotlinDefaults[f.Type]
 			if !ok {
-				def = "TODO()"
+				log.Fatalf("unsupported Kotlin default for field type %q in command %q", f.Type, cmd.Snake)
 			}
 			params = append(params, fmt.Sprintf("%s: %s = %s", f.Name, ktType, def))
 		}
@@ -719,7 +719,7 @@ func generateKotlinClient(commands []Command, streaming map[string]string) strin
 				}
 				def, ok := kotlinDefaults[f.Type]
 				if !ok {
-					def = "TODO()"
+					log.Fatalf("unsupported Kotlin default for field type %q in command %q", f.Type, cmd.Snake)
 				}
 				params = append(params, fmt.Sprintf("%s: %s = %s", f.Name, ktType, def))
 			}
