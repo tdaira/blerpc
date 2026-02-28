@@ -33,9 +33,9 @@ export abstract class GeneratedClient {
     return blerpc.DataWriteResponse.decode(respData);
   }
 
-  async counterStream({
-    count = 0,
-  }: { count?: number } = {}): Promise<blerpc.CounterStreamResponse[]> {
+  async counterStream({ count = 0 }: { count?: number } = {}): Promise<
+    blerpc.CounterStreamResponse[]
+  > {
     const req = blerpc.CounterStreamRequest.create({ count });
     const responses = await this.streamReceive(
       'counter_stream',
@@ -44,7 +44,9 @@ export abstract class GeneratedClient {
     return responses.map((data) => blerpc.CounterStreamResponse.decode(data));
   }
 
-  async counterUpload(messages: blerpc.ICounterUploadRequest[]): Promise<blerpc.CounterUploadResponse> {
+  async counterUpload(
+    messages: blerpc.ICounterUploadRequest[],
+  ): Promise<blerpc.CounterUploadResponse> {
     const raw = messages.map((m) =>
       blerpc.CounterUploadRequest.encode(blerpc.CounterUploadRequest.create(m)).finish(),
     );

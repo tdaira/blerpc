@@ -17,7 +17,9 @@ export class TestRunner {
     return this._running;
   }
 
-  async runAll(options: { iterations?: number; device?: ScannedDevice; client?: BlerpcClient } = {}): Promise<void> {
+  async runAll(
+    options: { iterations?: number; device?: ScannedDevice; client?: BlerpcClient } = {},
+  ): Promise<void> {
     if (this._running) return;
     this._running = true;
     this._passCount = 0;
