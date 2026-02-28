@@ -6,3 +6,6 @@
 -keepclassmembers @com.facebook.proguard.annotations.KeepGettersAndSetters class * { void set*(***); *** get*(); }
 -dontwarn com.facebook.react.**
 -keep,includedescriptorclasses class com.facebook.react.bridge.** { *; }
+
+# Keep devsupport classes referenced by native SoLoader merged mapping
+-keep class com.facebook.react.devsupport.** { *; }

@@ -17,6 +17,7 @@ targets:
     sources: [BlerpcCentral]
     settings:
       DEVELOPMENT_TEAM: RHNLLG5J5B
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: BlerpcCentral/Info.plist
       properties:

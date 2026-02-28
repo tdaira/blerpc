@@ -197,22 +197,12 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _scanning || _running ? null : _scan,
-                    child: Text(_scanning ? 'Scanning...' : 'Scan'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _running || _scanning ? null : null,
-                    child: Text(_running ? 'Running...' : 'Run Tests'),
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _scanning || _running ? null : _scan,
+                child: Text(_scanning ? 'Scanning...' : 'Scan'),
+              ),
             ),
             if (_devices.isNotEmpty) ...[
               const SizedBox(height: 12),

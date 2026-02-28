@@ -33,43 +33,26 @@ struct ContentView: View {
             }
             .padding(.top, 16)
 
-            HStack(spacing: 12) {
-                Button(action: {
-                    isScanning = true
-                    scannedDevices = []
-                    Task {
-                        do {
-                            let client = BlerpcClient()
-                            scannedDevices = try await client.scan()
-                        } catch {
-                            testRunner.logs.append("[ERROR] Scan failed: \(error)")
-                        }
-                        isScanning = false
+            Button(action: {
+                isScanning = true
+                scannedDevices = []
+                Task {
+                    do {
+                        let client = BlerpcClient()
+                        scannedDevices = try await client.scan()
+                    } catch {
+                        testRunner.logs.append("[ERROR] Scan failed: \(error)")
                     }
-                }) {
-                    Text(isScanning ? "Scanning..." : "Scan")
-                        .frame(maxWidth: .infinity)
-                        .foregroundColor(.white)
+                    isScanning = false
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .disabled(isScanning || isRunning)
-
-                Button(action: {
-                    isRunning = true
-                    Task {
-                        await testRunner.runAll()
-                        isRunning = false
-                    }
-                }) {
-                    Text(isRunning ? "Running..." : "Run Tests")
-                        .frame(maxWidth: .infinity)
-                        .foregroundColor(.white)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .disabled(isRunning || isScanning)
+            }) {
+                Text(isScanning ? "Scanning..." : "Scan")
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(.white)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(accent)
+            .disabled(isScanning || isRunning)
             .padding(.horizontal, 16)
 
             if !scannedDevices.isEmpty {
