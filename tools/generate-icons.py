@@ -155,12 +155,14 @@ def save_ios_icons(master: Image.Image, appiconset_dir: Path) -> None:
 
     for size_str, scale, px in iphone_entries:
         filename = f"icon-{px}.png"
-        images.append({
-            "size": size_str,
-            "idiom": "iphone",
-            "filename": filename,
-            "scale": scale,
-        })
+        images.append(
+            {
+                "size": size_str,
+                "idiom": "iphone",
+                "filename": filename,
+                "scale": scale,
+            }
+        )
         if filename not in filenames_written:
             resized = master.resize((px, px), Image.LANCZOS)
             resized.save(appiconset_dir / filename)
@@ -181,12 +183,14 @@ def save_ios_icons(master: Image.Image, appiconset_dir: Path) -> None:
 
     for size_str, scale, px in ipad_entries:
         filename = f"icon-{px}.png"
-        images.append({
-            "size": size_str,
-            "idiom": "ipad",
-            "filename": filename,
-            "scale": scale,
-        })
+        images.append(
+            {
+                "size": size_str,
+                "idiom": "ipad",
+                "filename": filename,
+                "scale": scale,
+            }
+        )
         if filename not in filenames_written:
             resized = master.resize((px, px), Image.LANCZOS)
             resized.save(appiconset_dir / filename)
@@ -194,12 +198,14 @@ def save_ios_icons(master: Image.Image, appiconset_dir: Path) -> None:
 
     # App Store icon
     filename = "icon-1024.png"
-    images.append({
-        "size": "1024x1024",
-        "idiom": "ios-marketing",
-        "filename": filename,
-        "scale": "1x",
-    })
+    images.append(
+        {
+            "size": "1024x1024",
+            "idiom": "ios-marketing",
+            "filename": filename,
+            "scale": "1x",
+        }
+    )
     master.save(appiconset_dir / filename)
     filenames_written.add(filename)
 

@@ -73,6 +73,7 @@ final class BlerpcClient: GeneratedClientProtocol {
             let ms = Int(resp.payload[0]) | (Int(resp.payload[1]) << 8)
             timeoutMs = ms
         } else {
+            // swiftlint:disable:next line_length
             logger.warning("Unexpected timeout response: type=\(resp.containerType.rawValue), cmd=\(resp.controlCmd.rawValue), payload_len=\(resp.payload.count)")
         }
     }
@@ -95,12 +96,14 @@ final class BlerpcClient: GeneratedClientProtocol {
             }
             maxRequestPayloadSize = maxReq
             maxResponsePayloadSize = maxResp
+            // swiftlint:disable:next line_length
             logger.info("Peripheral capabilities: max_request=\(maxReq), max_response=\(maxResp), flags=0x\(String(flags, radix: 16, uppercase: false))")
 
             if flags & Int(capabilityFlagEncryptionSupported) != 0 {
                 try await performKeyExchange()
             }
         } else {
+            // swiftlint:disable:next line_length
             logger.warning("Unexpected capabilities response: type=\(resp.containerType.rawValue), cmd=\(resp.controlCmd.rawValue), payload_len=\(resp.payload.count)")
         }
     }

@@ -35,7 +35,10 @@ def run_rtterminal(jlink, rtt_addr):
         try:
             num_up = jlink.rtt_get_num_up_buffers()
             if num_up > 0:
-                print(f"RTT started via RTTERMINAL API ({num_up} up buffers)", file=sys.stderr)
+                print(
+                    f"RTT started via RTTERMINAL API ({num_up} up buffers)",
+                    file=sys.stderr,
+                )
                 break
         except pylink.errors.JLinkRTTException:
             pass
@@ -63,15 +66,21 @@ def run_memory_read(jlink, rtt_addr):
     """Read RTT ring buffer directly from target memory."""
     magic = bytes(jlink.memory_read(rtt_addr, 10))
     if magic != b"SEGGER RTT":
-        print(f"ERROR: No RTT magic at 0x{rtt_addr:08x} (got {magic!r})", file=sys.stderr)
+        print(
+            f"ERROR: No RTT magic at 0x{rtt_addr:08x} (got {magic!r})", file=sys.stderr
+        )
         return False
 
     # Parse aUp[0] ring buffer descriptor (starts at rtt_addr + 24)
-    # struct { const char *sName; char *pBuffer; uint SizeOfBuffer; uint WrOff; uint RdOff; uint Flags; }
+    # struct { const char *sName; char *pBuffer;
+    #   uint SizeOfBuffer; uint WrOff; uint RdOff; uint Flags; }
     UP0 = rtt_addr + 24
     buf_ptr = read_u32(jlink, UP0 + 4)
     buf_size = read_u32(jlink, UP0 + 8)
-    print(f"RTT started via memory read (buf=0x{buf_ptr:08x} size={buf_size})", file=sys.stderr)
+    print(
+        f"RTT started via memory read (buf=0x{buf_ptr:08x} size={buf_size})",
+        file=sys.stderr,
+    )
 
     # Set RdOff = WrOff to skip old data
     wr_off = read_u32(jlink, UP0 + 12)
@@ -104,13 +113,25 @@ def run_memory_read(jlink, rtt_addr):
 
 def main():
     parser = argparse.ArgumentParser(description="Read RTT from target board")
-    parser.add_argument("--reset", action="store_true", help="Reset target before reading")
-    parser.add_argument("--rtt-address", type=lambda x: int(x, 0), default=0x20000090,
-                        help="RTT control block address (from nm zephyr.elf | grep _SEGGER_RTT)")
-    parser.add_argument("--device", default="EFR32BG22C224F512IM40",
-                        help="J-Link device name (default: EFR32BG22C224F512IM40)")
-    parser.add_argument("--memory-only", action="store_true",
-                        help="Skip RTTERMINAL API, use memory reads only")
+    parser.add_argument(
+        "--reset", action="store_true", help="Reset target before reading"
+    )
+    parser.add_argument(
+        "--rtt-address",
+        type=lambda x: int(x, 0),
+        default=0x20000090,
+        help="RTT control block address (from nm zephyr.elf | grep _SEGGER_RTT)",
+    )
+    parser.add_argument(
+        "--device",
+        default="EFR32BG22C224F512IM40",
+        help="J-Link device name (default: EFR32BG22C224F512IM40)",
+    )
+    parser.add_argument(
+        "--memory-only",
+        action="store_true",
+        help="Skip RTTERMINAL API, use memory reads only",
+    )
     args = parser.parse_args()
 
     jlink = pylink.JLink()

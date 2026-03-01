@@ -1,0 +1,14 @@
+disabled_rules:
+  - trailing_comma
+  - identifier_name
+  - multiple_closures_with_trailing_closure
+included:
+  - BlerpcCentral
+excluded:
+  - BlerpcCentral/Proto
+type_body_length:
+  warning: 300
+  error: 400
+function_body_length:
+  warning: 80
+  error: 150

@@ -6,7 +6,17 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,8 +24,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +65,7 @@ private val Success = Color(0xFF9ECE6A)
 private val Error = Color(0xFFF7768E)
 private val NavBg = Color(0xFF16161E)
 
+@Suppress("ktlint:standard:function-naming")
 @Composable
 fun LogScreen(
     logs: List<String>,
@@ -51,7 +73,7 @@ fun LogScreen(
     isScanning: Boolean,
     scannedDevices: List<ScannedDevice>,
     onScan: () -> Unit,
-    onSelectDevice: (ScannedDevice) -> Unit
+    onSelectDevice: (ScannedDevice) -> Unit,
 ) {
     val listState = rememberLazyListState()
 
@@ -62,37 +84,40 @@ fun LogScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BgPrimary)
-            .padding(16.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(BgPrimary)
+                .padding(16.dp),
     ) {
         Text(
-            text = buildAnnotatedString {
-                withStyle(SpanStyle(color = Accent, fontWeight = FontWeight.Black)) {
-                    append("ble")
-                }
-                withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Black)) {
-                    append("RPC")
-                }
-                withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Normal)) {
-                    append(" Central")
-                }
-            },
+            text =
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = Accent, fontWeight = FontWeight.Black)) {
+                        append("ble")
+                    }
+                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Black)) {
+                        append("RPC")
+                    }
+                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Normal)) {
+                        append(" Central")
+                    }
+                },
             fontSize = 24.sp,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 16.dp),
         )
 
         Button(
             onClick = onScan,
             enabled = !isScanning && !isRunning,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Accent,
-                contentColor = Color.White,
-                disabledContainerColor = BgSecondary,
-                disabledContentColor = TextSecondary
-            ),
-            modifier = Modifier.fillMaxWidth()
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    contentColor = Color.White,
+                    disabledContainerColor = BgSecondary,
+                    disabledContentColor = TextSecondary,
+                ),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (isScanning) "Scanning..." else "Scan")
         }
@@ -105,46 +130,48 @@ fun LogScreen(
                 color = TextPrimary,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier.padding(bottom = 4.dp),
             )
 
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 200.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BgSecondary)
-                    .border(1.dp, Border, RoundedCornerShape(8.dp))
-                    .padding(4.dp)
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BgSecondary)
+                        .border(1.dp, Border, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
             ) {
                 items(scannedDevices, key = { it.address }) { device ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !isRunning) { onSelectDevice(device) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !isRunning) { onSelectDevice(device) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = device.name ?: "Unknown",
                                 color = TextPrimary,
                                 fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                             Text(
                                 text = device.address,
                                 color = TextSecondary,
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
                             )
                         }
                         Text(
                             text = "${device.rssi} dBm",
                             color = TextSecondary,
                             fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
                         )
                     }
                     Divider(color = Border)
@@ -160,7 +187,7 @@ fun LogScreen(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.End,
         ) {
             TextButton(
                 onClick = {
@@ -172,45 +199,47 @@ fun LogScreen(
                         showCopied = false
                     }
                 },
-                enabled = logs.isNotEmpty()
+                enabled = logs.isNotEmpty(),
             ) {
                 Icon(
                     imageVector = if (showCopied) Icons.Default.Check else Icons.Default.Share,
                     contentDescription = null,
                     tint = if (logs.isEmpty()) TextSecondary else Accent,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(16.dp),
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = if (showCopied) "Copied!" else "Copy Logs",
                     color = if (logs.isEmpty()) TextSecondary else Accent,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
                 )
             }
         }
 
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(8.dp))
-                .background(BgCode)
-                .border(1.dp, Border, RoundedCornerShape(8.dp))
-                .padding(12.dp)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BgCode)
+                    .border(1.dp, Border, RoundedCornerShape(8.dp))
+                    .padding(12.dp),
         ) {
             items(logs) { line ->
-                val color = when {
-                    line.startsWith("[PASS]") -> Success
-                    line.startsWith("[FAIL]") || line.startsWith("[ERROR]") -> Error
-                    line.startsWith("[BENCH]") -> Accent
-                    else -> TextPrimary
-                }
+                val color =
+                    when {
+                        line.startsWith("[PASS]") -> Success
+                        line.startsWith("[FAIL]") || line.startsWith("[ERROR]") -> Error
+                        line.startsWith("[BENCH]") -> Accent
+                        else -> TextPrimary
+                    }
                 Text(
                     text = line,
                     color = color,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(vertical = 1.dp)
+                    modifier = Modifier.padding(vertical = 1.dp),
                 )
             }
         }

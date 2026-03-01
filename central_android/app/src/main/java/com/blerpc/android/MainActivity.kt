@@ -8,7 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.android.client.BlerpcClient
@@ -24,9 +29,10 @@ class MainActivity : ComponentActivity() {
     private var autoRunPending = false
     private var autoRunIterations = 1
 
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* permissions granted or denied */ }
+    private val permissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions(),
+        ) { /* permissions granted or denied */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,7 +97,7 @@ class MainActivity : ComponentActivity() {
                                 isRunning = false
                             }
                         }
-                    }
+                    },
                 )
             }
         }
@@ -106,13 +112,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestPermissions() {
-        val needed = arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ).filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
+        val needed =
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ).filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
         if (needed.isNotEmpty()) {
             permissionLauncher.launch(needed.toTypedArray())
         }
