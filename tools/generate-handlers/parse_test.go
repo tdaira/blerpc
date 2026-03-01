@@ -129,24 +129,6 @@ message UpdateAddressResponse {
 }
 `
 
-const nestedMessageProto = `syntax = "proto3";
-package test;
-
-message Outer {
-  message Inner {
-    string value = 1;
-  }
-}
-
-message GetInnerRequest {
-  string id = 1;
-}
-
-message GetInnerResponse {
-  Outer.Inner result = 1;
-}
-`
-
 const oneofProto = `syntax = "proto3";
 package test;
 
