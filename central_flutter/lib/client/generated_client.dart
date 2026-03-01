@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:blerpc_central/proto/blerpc.pb.dart';
 
-/// Auto-generated RPC method wrappers for blerpc commands.
+/// Auto-generated RPC method wrappers.
 mixin GeneratedClientMixin {
   Future<Uint8List> call(String cmdName, Uint8List requestData);
   Future<List<Uint8List>> streamReceive(String cmdName, Uint8List requestData);
