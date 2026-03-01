@@ -108,7 +108,7 @@ func TestGenerateTsClient_StreamP2C(t *testing.T) {
 
 	mustContain := []string{
 		"async counterStream(",
-		"Promise<blerpc.CounterStreamResponse[]>",
+		"blerpc.CounterStreamResponse[]",
 		"this.streamReceive(",
 		"blerpc.CounterStreamResponse.decode(data)",
 	}

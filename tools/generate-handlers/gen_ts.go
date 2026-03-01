@@ -107,14 +107,14 @@ func generateTsClient(commands []Command, streaming map[string]string, pkg strin
 				typeStr := strings.Join(typeFields, "; ")
 				singleLine := fmt.Sprintf("  async %s({ %s }: { %s } = {}): Promise<%s[]> {",
 					methodName, paramsStr, typeStr, respCls)
-				if len(singleLine) <= 100 {
+				if len(singleLine) <= 80 {
 					b.WriteString(singleLine + "\n")
 				} else {
-					b.WriteString(fmt.Sprintf("  async %s({\n", methodName))
-					for _, p := range params {
-						b.WriteString(fmt.Sprintf("    %s,\n", p))
-					}
-					b.WriteString(fmt.Sprintf("  }: { %s } = {}): Promise<%s[]> {\n", typeStr, respCls))
+					// Prettier-compatible: wrap return type after Promise<
+					b.WriteString(fmt.Sprintf("  async %s({ %s }: { %s } = {}): Promise<\n",
+						methodName, paramsStr, typeStr))
+					b.WriteString(fmt.Sprintf("    %s[]\n", respCls))
+					b.WriteString("  > {\n")
 				}
 			} else {
 				b.WriteString(fmt.Sprintf("  async %s(): Promise<%s[]> {\n", methodName, respCls))
@@ -139,7 +139,15 @@ func generateTsClient(commands []Command, streaming map[string]string, pkg strin
 			b.WriteString("  }\n")
 		} else {
 			iReqCls := pkg + ".I" + cmd.RequestMsg
-			b.WriteString(fmt.Sprintf("  async %s(messages: %s[]): Promise<%s> {\n", methodName, iReqCls, respCls))
+			singleLine := fmt.Sprintf("  async %s(messages: %s[]): Promise<%s> {", methodName, iReqCls, respCls)
+			if len(singleLine) <= 80 {
+				b.WriteString(singleLine + "\n")
+			} else {
+				// Prettier-compatible: wrap parameter
+				b.WriteString(fmt.Sprintf("  async %s(\n", methodName))
+				b.WriteString(fmt.Sprintf("    messages: %s[],\n", iReqCls))
+				b.WriteString(fmt.Sprintf("  ): Promise<%s> {\n", respCls))
+			}
 			b.WriteString("    const raw = messages.map((m) =>\n")
 			b.WriteString(fmt.Sprintf("      %s.encode(%s.create(m)).finish(),\n", reqCls, reqCls))
 			b.WriteString("    );\n")

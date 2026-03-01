@@ -7,9 +7,9 @@ import (
 
 func echoCommand() Command {
 	return Command{
-		Camel:      "Echo",
-		Snake:      "echo",
-		RequestMsg: "EchoRequest",
+		Camel:       "Echo",
+		Snake:       "echo",
+		RequestMsg:  "EchoRequest",
 		ResponseMsg: "EchoResponse",
 		RequestFields: []Field{
 			{Type: "string", Name: "message", Number: 1},
@@ -22,9 +22,9 @@ func echoCommand() Command {
 
 func messageFieldCommand() Command {
 	return Command{
-		Camel:      "UpdateAddress",
-		Snake:      "update_address",
-		RequestMsg: "UpdateAddressRequest",
+		Camel:       "UpdateAddress",
+		Snake:       "update_address",
+		RequestMsg:  "UpdateAddressRequest",
 		ResponseMsg: "UpdateAddressResponse",
 		RequestFields: []Field{
 			{Type: "string", Name: "user_id", Number: 1},
@@ -38,9 +38,9 @@ func messageFieldCommand() Command {
 
 func mapCommand() Command {
 	return Command{
-		Camel:      "SetLabels",
-		Snake:      "set_labels",
-		RequestMsg: "SetLabelsRequest",
+		Camel:       "SetLabels",
+		Snake:       "set_labels",
+		RequestMsg:  "SetLabelsRequest",
 		ResponseMsg: "SetLabelsResponse",
 		RequestFields: []Field{
 			{Name: "labels", Number: 1, IsMap: true, KeyType: "string", ValueType: "string"},
@@ -54,9 +54,9 @@ func mapCommand() Command {
 
 func repeatedCommand() Command {
 	return Command{
-		Camel:      "Batch",
-		Snake:      "batch",
-		RequestMsg: "BatchRequest",
+		Camel:       "Batch",
+		Snake:       "batch",
+		RequestMsg:  "BatchRequest",
 		ResponseMsg: "BatchResponse",
 		RequestFields: []Field{
 			{Type: "string", Name: "names", Number: 1, IsRepeated: true},
@@ -70,9 +70,9 @@ func repeatedCommand() Command {
 
 func enumCommand() Command {
 	return Command{
-		Camel:      "GetStatus",
-		Snake:      "get_status",
-		RequestMsg: "GetStatusRequest",
+		Camel:       "GetStatus",
+		Snake:       "get_status",
+		RequestMsg:  "GetStatusRequest",
 		ResponseMsg: "GetStatusResponse",
 		RequestFields: []Field{
 			{Type: "string", Name: "name", Number: 1},
@@ -85,9 +85,9 @@ func enumCommand() Command {
 
 func streamP2CCommand() Command {
 	return Command{
-		Camel:      "CounterStream",
-		Snake:      "counter_stream",
-		RequestMsg: "CounterStreamRequest",
+		Camel:       "CounterStream",
+		Snake:       "counter_stream",
+		RequestMsg:  "CounterStreamRequest",
 		ResponseMsg: "CounterStreamResponse",
 		RequestFields: []Field{
 			{Type: "uint32", Name: "start", Number: 1},
@@ -100,9 +100,9 @@ func streamP2CCommand() Command {
 
 func streamC2PCommand() Command {
 	return Command{
-		Camel:      "CounterUpload",
-		Snake:      "counter_upload",
-		RequestMsg: "CounterUploadRequest",
+		Camel:       "CounterUpload",
+		Snake:       "counter_upload",
+		RequestMsg:  "CounterUploadRequest",
 		ResponseMsg: "CounterUploadResponse",
 		RequestFields: []Field{
 			{Type: "uint32", Name: "value", Number: 1},
@@ -115,9 +115,9 @@ func streamC2PCommand() Command {
 
 func callbackCommand() Command {
 	return Command{
-		Camel:      "DataWrite",
-		Snake:      "data_write",
-		RequestMsg: "DataWriteRequest",
+		Camel:       "DataWrite",
+		Snake:       "data_write",
+		RequestMsg:  "DataWriteRequest",
 		ResponseMsg: "DataWriteResponse",
 		RequestFields: []Field{
 			{Type: "uint32", Name: "address", Number: 1},

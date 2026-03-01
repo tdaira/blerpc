@@ -161,16 +161,16 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 
 		if isStreaming && dir == "p2c" {
 			// P2C streaming: callback struct + on_resp function + main function
-			b.WriteString(fmt.Sprintf("struct _" + pkg + "_%s_ctx {\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("struct _"+pkg+"_%s_ctx {\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("    %s *results;\n", respMsg))
 			b.WriteString("    size_t max_results;\n")
 			b.WriteString("    size_t count;\n")
 			b.WriteString("};\n\n")
 
-			b.WriteString(fmt.Sprintf("static int _" + pkg + "_%s_on_resp(const uint8_t *data, size_t len,\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("static int _"+pkg+"_%s_on_resp(const uint8_t *data, size_t len,\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("                              %svoid *ctx)\n", strings.Repeat(" ", len(cmd.Snake))))
 			b.WriteString("{\n")
-			b.WriteString(fmt.Sprintf("    struct _" + pkg + "_%s_ctx *c = (struct _" + pkg + "_%s_ctx *)ctx;\n", cmd.Snake, cmd.Snake))
+			b.WriteString(fmt.Sprintf("    struct _"+pkg+"_%s_ctx *c = (struct _"+pkg+"_%s_ctx *)ctx;\n", cmd.Snake, cmd.Snake))
 			b.WriteString("    if (c->count >= c->max_results) return -1;\n")
 			b.WriteString(fmt.Sprintf("    c->results[c->count] = (%s)%s_init_zero;\n", respMsg, respMsg))
 			b.WriteString("    pb_istream_t istream = pb_istream_from_buffer(data, len);\n")
@@ -194,11 +194,11 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			b.WriteString("    pb_ostream_t ostream = pb_ostream_from_buffer(req_buf, sizeof(req_buf));\n")
 			b.WriteString(fmt.Sprintf("    if (!pb_encode(&ostream, %s_fields, &req)) return -1;\n", reqMsg))
 			b.WriteByte('\n')
-			b.WriteString(fmt.Sprintf("    struct _" + pkg + "_%s_ctx ctx = {\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("    struct _"+pkg+"_%s_ctx ctx = {\n", cmd.Snake))
 			b.WriteString("        .results = results, .max_results = max_results, .count = 0\n")
 			b.WriteString("    };\n")
-			b.WriteString(fmt.Sprintf("    if (" + pkg + "_stream_receive(\"%s\", req_buf, ostream.bytes_written,\n", cmd.Snake))
-			b.WriteString(fmt.Sprintf("                              _" + pkg + "_%s_on_resp, &ctx) != 0) return -1;\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("    if ("+pkg+"_stream_receive(\"%s\", req_buf, ostream.bytes_written,\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("                              _"+pkg+"_%s_on_resp, &ctx) != 0) return -1;\n", cmd.Snake))
 			b.WriteByte('\n')
 			b.WriteString("    *result_count = ctx.count;\n")
 			b.WriteString("    return 0;\n")
@@ -206,14 +206,14 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 
 		} else if isStreaming && dir == "c2p" {
 			// C2P streaming: next_msg struct + callback + main function
-			b.WriteString(fmt.Sprintf("struct _" + pkg + "_%s_ctx {\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("struct _"+pkg+"_%s_ctx {\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("    const %s *messages;\n", reqMsg))
 			b.WriteString("};\n\n")
 
-			b.WriteString(fmt.Sprintf("static int _" + pkg + "_%s_next(size_t index, uint8_t *buf,\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("static int _"+pkg+"_%s_next(size_t index, uint8_t *buf,\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("                           %ssize_t buf_size, size_t *len, void *ctx)\n", strings.Repeat(" ", len(cmd.Snake))))
 			b.WriteString("{\n")
-			b.WriteString(fmt.Sprintf("    struct _" + pkg + "_%s_ctx *c = (struct _" + pkg + "_%s_ctx *)ctx;\n", cmd.Snake, cmd.Snake))
+			b.WriteString(fmt.Sprintf("    struct _"+pkg+"_%s_ctx *c = (struct _"+pkg+"_%s_ctx *)ctx;\n", cmd.Snake, cmd.Snake))
 			b.WriteString("    pb_ostream_t ostream = pb_ostream_from_buffer(buf, buf_size);\n")
 			b.WriteString(fmt.Sprintf("    if (!pb_encode(&ostream, %s_fields, &c->messages[index])) return -1;\n", reqMsg))
 			b.WriteString("    *len = ostream.bytes_written;\n")
@@ -222,12 +222,12 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 
 			b.WriteString(fmt.Sprintf("int %s_%s(%s)\n", pkg, cmd.Snake, strings.Join(params, ", ")))
 			b.WriteString("{\n")
-			b.WriteString(fmt.Sprintf("    struct _" + pkg + "_%s_ctx ctx = { .messages = messages };\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("    struct _"+pkg+"_%s_ctx ctx = { .messages = messages };\n", cmd.Snake))
 			b.WriteByte('\n')
 			b.WriteString(fmt.Sprintf("    uint8_t resp_buf[%s_size];\n", respMsg))
 			b.WriteString("    size_t resp_len;\n")
-			b.WriteString(fmt.Sprintf("    if (" + pkg + "_stream_send(\"%s\", msg_count,\n", cmd.Snake))
-			b.WriteString(fmt.Sprintf("                           _" + pkg + "_%s_next, &ctx,\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("    if ("+pkg+"_stream_send(\"%s\", msg_count,\n", cmd.Snake))
+			b.WriteString(fmt.Sprintf("                           _"+pkg+"_%s_next, &ctx,\n", cmd.Snake))
 			b.WriteString(fmt.Sprintf("                           \"%s\", resp_buf, sizeof(resp_buf),\n", cmd.Snake))
 			b.WriteString("                           &resp_len) != 0) return -1;\n")
 			b.WriteByte('\n')
@@ -260,7 +260,7 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			if hasCbReq {
 				for _, f := range cmd.RequestFields {
 					if callbacks[cmd.RequestMsg+"."+f.Name] {
-						b.WriteString(fmt.Sprintf("    struct _" + pkg + "_bytes_encode_ctx _%s_ctx = {\n", f.Name))
+						b.WriteString(fmt.Sprintf("    struct _"+pkg+"_bytes_encode_ctx _%s_ctx = {\n", f.Name))
 						b.WriteString(fmt.Sprintf("        .data = %s, .data_len = %s_len\n", f.Name, f.Name))
 						b.WriteString("    };\n")
 					}
@@ -274,7 +274,7 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			for _, f := range cmd.RequestFields {
 				key := cmd.RequestMsg + "." + f.Name
 				if callbacks[key] {
-					b.WriteString(fmt.Sprintf("    req.%s.funcs.encode = _" + pkg + "_encode_bytes_cb;\n", f.Name))
+					b.WriteString(fmt.Sprintf("    req.%s.funcs.encode = _"+pkg+"_encode_bytes_cb;\n", f.Name))
 					b.WriteString(fmt.Sprintf("    req.%s.arg = &_%s_ctx;\n", f.Name, f.Name))
 				} else if f.Type == "string" {
 					b.WriteString(fmt.Sprintf("    strncpy(req.%s, %s, sizeof(req.%s) - 1);\n", f.Name, f.Name, f.Name))
@@ -306,13 +306,13 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			}
 			if hasCbResp {
 				b.WriteString("    size_t resp_len;\n")
-				b.WriteString(fmt.Sprintf("    if (" + pkg + "_rpc_call(\"%s\", %s, ostream.bytes_written,\n", cmd.Snake, reqBufName))
+				b.WriteString(fmt.Sprintf("    if ("+pkg+"_rpc_call(\"%s\", %s, ostream.bytes_written,\n", cmd.Snake, reqBufName))
 				b.WriteString("                        _" + pkg + "_resp_buf, sizeof(_" + pkg + "_resp_buf),\n")
 				b.WriteString("                        &resp_len) != 0) return -1;\n")
 			} else {
 				b.WriteString(fmt.Sprintf("    uint8_t resp_buf[%s_size];\n", respMsg))
 				b.WriteString("    size_t resp_len;\n")
-				b.WriteString(fmt.Sprintf("    if (" + pkg + "_rpc_call(\"%s\", %s, ostream.bytes_written,\n", cmd.Snake, reqBufName))
+				b.WriteString(fmt.Sprintf("    if ("+pkg+"_rpc_call(\"%s\", %s, ostream.bytes_written,\n", cmd.Snake, reqBufName))
 				b.WriteString("                        resp_buf, sizeof(resp_buf), &resp_len) != 0) return -1;\n")
 			}
 			b.WriteByte('\n')
@@ -321,7 +321,7 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			if hasCbResp {
 				for _, f := range cmd.ResponseFields {
 					if callbacks[cmd.ResponseMsg+"."+f.Name] {
-						b.WriteString(fmt.Sprintf("    struct _" + pkg + "_bytes_decode_ctx _%s_ctx = {\n", f.Name))
+						b.WriteString(fmt.Sprintf("    struct _"+pkg+"_bytes_decode_ctx _%s_ctx = {\n", f.Name))
 						b.WriteString(fmt.Sprintf("        .buf = %s_buf, .buf_size = %s_buf_size, .decoded_len = 0\n", f.Name, f.Name))
 						b.WriteString("    };\n")
 					}
@@ -333,7 +333,7 @@ func generateCClientSource(commands []Command, streaming map[string]string, call
 			if hasCbResp {
 				for _, f := range cmd.ResponseFields {
 					if callbacks[cmd.ResponseMsg+"."+f.Name] {
-						b.WriteString(fmt.Sprintf("    resp->%s.funcs.decode = _" + pkg + "_decode_bytes_cb;\n", f.Name))
+						b.WriteString(fmt.Sprintf("    resp->%s.funcs.decode = _"+pkg+"_decode_bytes_cb;\n", f.Name))
 						b.WriteString(fmt.Sprintf("    resp->%s.arg = &_%s_ctx;\n", f.Name, f.Name))
 					}
 				}
