@@ -44,92 +44,96 @@ final class TestRunner: ObservableObject {
                 if iterations > 1 {
                     log("--- Iteration \(iter)/\(iterations) ---")
                 }
-
-                await runTest(client: client, name: "echo_basic") {
-                    let resp = try await client.echo(message: "hello")
-                    guard resp.message == "hello" else {
-                        throw TestError.assertion("Expected 'hello', got '\(resp.message)'")
-                    }
-                }
-
-                await runTest(client: client, name: "echo_empty") {
-                    let resp = try await client.echo(message: "")
-                    guard resp.message == "" else {
-                        throw TestError.assertion("Expected empty, got '\(resp.message)'")
-                    }
-                }
-
-                await runTest(client: client, name: "flash_read_basic") {
-                    let resp = try await client.flashRead(address: 0, length: 64)
-                    guard resp.data.count == 64 else {
-                        throw TestError.assertion("Expected 64 bytes, got \(resp.data.count)")
-                    }
-                }
-
-                await runTest(client: client, name: "flash_read_8kb") {
-                    let resp = try await client.flashRead(address: 0, length: 8192)
-                    guard resp.data.count == 8192 else {
-                        throw TestError.assertion("Expected 8192 bytes, got \(resp.data.count)")
-                    }
-                }
-
-                await runTest(client: client, name: "data_write") {
-                    let testData = Data(0..<64)
-                    let resp = try await client.dataWrite(data: testData)
-                    guard resp.length == 64 else {
-                        throw TestError.assertion("Expected length 64, got \(resp.length)")
-                    }
-                }
-
-                await runTest(client: client, name: "counter_stream") {
-                    let results = try await client.counterStream(count: 5)
-                    guard results.count == 5 else {
-                        throw TestError.assertion("Expected 5 results, got \(results.count)")
-                    }
-                    for i in 0..<5 {
-                        guard results[i].seq == UInt32(i) else {
-                            throw TestError.assertion("Expected seq=\(i), got \(results[i].seq)")
-                        }
-                        guard results[i].value == Int32(i * 10) else {
-                            throw TestError.assertion(
-                                "Expected value=\(i * 10), got \(results[i].value)"
-                            )
-                        }
-                    }
-                }
-
-                await runTest(client: client, name: "counter_upload") {
-                    let messages = try (0..<5).map { i -> Blerpc_CounterUploadRequest in
-                        var req = Blerpc_CounterUploadRequest()
-                        req.seq = UInt32(i)
-                        req.value = Int32(i * 10)
-                        return req
-                    }
-                    let resp = try await client.counterUpload(messages: messages)
-                    guard resp.receivedCount == 5 else {
-                        throw TestError.assertion(
-                            "Expected received_count=5, got \(resp.receivedCount)"
-                        )
-                    }
-                }
+                await runFunctionalTests(client: client)
             }
 
             log("=== Functional: \(passCount) passed, \(failCount) failed (\(iterations) iterations) ===")
-
-            // Throughput benchmarks
-            log("")
-            log("=== Throughput Benchmarks ===")
-            await benchmarkFlashReadThroughput(client: client)
-            await benchmarkFlashReadOverhead(client: client)
-            await benchmarkEchoRoundtrip(client: client)
-            await benchmarkDataWriteThroughput(client: client)
-            await benchmarkStreamThroughput(client: client)
-
+            await runBenchmarks(client: client)
         } catch {
             log("[ERROR] \(error)")
         }
         client.disconnect()
         running = false
+    }
+
+    private func runFunctionalTests(client: BlerpcClient) async {
+        await runTest(client: client, name: "echo_basic") {
+            let resp = try await client.echo(message: "hello")
+            guard resp.message == "hello" else {
+                throw TestError.assertion("Expected 'hello', got '\(resp.message)'")
+            }
+        }
+
+        await runTest(client: client, name: "echo_empty") {
+            let resp = try await client.echo(message: "")
+            guard resp.message == "" else {
+                throw TestError.assertion("Expected empty, got '\(resp.message)'")
+            }
+        }
+
+        await runTest(client: client, name: "flash_read_basic") {
+            let resp = try await client.flashRead(address: 0, length: 64)
+            guard resp.data.count == 64 else {
+                throw TestError.assertion("Expected 64 bytes, got \(resp.data.count)")
+            }
+        }
+
+        await runTest(client: client, name: "flash_read_8kb") {
+            let resp = try await client.flashRead(address: 0, length: 8192)
+            guard resp.data.count == 8192 else {
+                throw TestError.assertion("Expected 8192 bytes, got \(resp.data.count)")
+            }
+        }
+
+        await runTest(client: client, name: "data_write") {
+            let testData = Data(0..<64)
+            let resp = try await client.dataWrite(data: testData)
+            guard resp.length == 64 else {
+                throw TestError.assertion("Expected length 64, got \(resp.length)")
+            }
+        }
+
+        await runTest(client: client, name: "counter_stream") {
+            let results = try await client.counterStream(count: 5)
+            guard results.count == 5 else {
+                throw TestError.assertion("Expected 5 results, got \(results.count)")
+            }
+            for i in 0..<5 {
+                guard results[i].seq == UInt32(i) else {
+                    throw TestError.assertion("Expected seq=\(i), got \(results[i].seq)")
+                }
+                guard results[i].value == Int32(i * 10) else {
+                    throw TestError.assertion(
+                        "Expected value=\(i * 10), got \(results[i].value)"
+                    )
+                }
+            }
+        }
+
+        await runTest(client: client, name: "counter_upload") {
+            let messages = try (0..<5).map { i -> Blerpc_CounterUploadRequest in
+                var req = Blerpc_CounterUploadRequest()
+                req.seq = UInt32(i)
+                req.value = Int32(i * 10)
+                return req
+            }
+            let resp = try await client.counterUpload(messages: messages)
+            guard resp.receivedCount == 5 else {
+                throw TestError.assertion(
+                    "Expected received_count=5, got \(resp.receivedCount)"
+                )
+            }
+        }
+    }
+
+    private func runBenchmarks(client: BlerpcClient) async {
+        log("")
+        log("=== Throughput Benchmarks ===")
+        await benchmarkFlashReadThroughput(client: client)
+        await benchmarkFlashReadOverhead(client: client)
+        await benchmarkEchoRoundtrip(client: client)
+        await benchmarkDataWriteThroughput(client: client)
+        await benchmarkStreamThroughput(client: client)
     }
 
     private func benchmarkFlashReadThroughput(client: BlerpcClient) async {

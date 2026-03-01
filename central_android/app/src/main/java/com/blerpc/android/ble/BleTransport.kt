@@ -1,8 +1,17 @@
 package com.blerpc.android.ble
 
 import android.annotation.SuppressLint
-import android.bluetooth.*
-import android.bluetooth.le.*
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -28,7 +37,7 @@ data class ScannedDevice(
     val serviceData: Map<String, ByteArray>,
     val serviceUuids: List<String>,
     val rawBytes: ByteArray?,
-    internal val device: BluetoothDevice
+    internal val device: BluetoothDevice,
 )
 
 @SuppressLint("MissingPermission")
@@ -41,126 +50,163 @@ class BleTransport(private val context: Context) {
     val isConnected: Boolean get() = gatt != null
 
     @Volatile private var writeComplete: (() -> Unit)? = null
+
     @Volatile private var connectCont: ((Boolean) -> Unit)? = null
+
     @Volatile private var mtuCont: ((Int) -> Unit)? = null
+
     @Volatile private var descriptorWriteCont: (() -> Unit)? = null
 
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            Log.d(TAG, "onConnectionStateChange: status=$status, newState=$newState (0=disconnected, 2=connected)")
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    Log.w(TAG, "Connected but status=$status (not GATT_SUCCESS), proceeding with discoverServices")
+    private val gattCallback =
+        object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(
+                g: BluetoothGatt,
+                status: Int,
+                newState: Int,
+            ) {
+                Log.d(TAG, "onConnectionStateChange: status=$status, newState=$newState (0=disconnected, 2=connected)")
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        Log.w(TAG, "Connected but status=$status (not GATT_SUCCESS), proceeding with discoverServices")
+                    }
+                    g.discoverServices()
+                } else {
+                    Log.w(TAG, "Connection failed or disconnected: status=$status, newState=$newState")
+                    connectCont?.invoke(false)
+                    connectCont = null
                 }
-                g.discoverServices()
-            } else {
-                Log.w(TAG, "Connection failed or disconnected: status=$status, newState=$newState")
-                connectCont?.invoke(false)
+            }
+
+            override fun onServicesDiscovered(
+                g: BluetoothGatt,
+                status: Int,
+            ) {
+                Log.d(TAG, "onServicesDiscovered: status=$status, services=${g.services.map { it.uuid }}")
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    Log.e(TAG, "Service discovery failed with status=$status")
+                }
+                connectCont?.invoke(status == BluetoothGatt.GATT_SUCCESS)
                 connectCont = null
             }
-        }
 
-        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            Log.d(TAG, "onServicesDiscovered: status=$status, services=${g.services.map { it.uuid }}")
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                Log.e(TAG, "Service discovery failed with status=$status")
+            override fun onMtuChanged(
+                g: BluetoothGatt,
+                newMtu: Int,
+                status: Int,
+            ) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    mtu = newMtu
+                }
+                mtuCont?.invoke(mtu)
+                mtuCont = null
             }
-            connectCont?.invoke(status == BluetoothGatt.GATT_SUCCESS)
-            connectCont = null
-        }
 
-        override fun onMtuChanged(g: BluetoothGatt, newMtu: Int, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                mtu = newMtu
+            override fun onDescriptorWrite(
+                g: BluetoothGatt,
+                descriptor: BluetoothGattDescriptor,
+                status: Int,
+            ) {
+                descriptorWriteCont?.invoke()
+                descriptorWriteCont = null
             }
-            mtuCont?.invoke(mtu)
-            mtuCont = null
+
+            override fun onCharacteristicWrite(
+                g: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                status: Int,
+            ) {
+                writeComplete?.invoke()
+                writeComplete = null
+            }
+
+            @Suppress("DEPRECATION")
+            override fun onCharacteristicChanged(
+                g: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+            ) {
+                // Required for API < 33; the 3-arg overload is only called on API 33+
+                notifyChannel.trySend(characteristic.value)
+            }
+
+            override fun onCharacteristicChanged(
+                g: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                value: ByteArray,
+            ) {
+                // API 33+ callback
+                notifyChannel.trySend(value)
+            }
         }
 
-        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            descriptorWriteCont?.invoke()
-            descriptorWriteCont = null
-        }
-
-        override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            writeComplete?.invoke()
-            writeComplete = null
-        }
-
-        @Suppress("DEPRECATION")
-        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            // Required for API < 33; the 3-arg overload is only called on API 33+
-            notifyChannel.trySend(characteristic.value)
-        }
-
-        override fun onCharacteristicChanged(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
-            // API 33+ callback
-            notifyChannel.trySend(value)
-        }
-    }
-
-    suspend fun scan(timeout: Long = 5000, serviceUuid: UUID? = SERVICE_UUID): List<ScannedDevice> {
+    suspend fun scan(
+        timeout: Long = 5000,
+        serviceUuid: UUID? = SERVICE_UUID,
+    ): List<ScannedDevice> {
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        val scanner = adapter.bluetoothLeScanner
-            ?: throw IllegalStateException("BLE scanner not available")
+        val scanner =
+            adapter.bluetoothLeScanner
+                ?: throw IllegalStateException("BLE scanner not available")
 
         val results = mutableMapOf<String, ScannedDevice>()
 
-        val callback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val record = result.scanRecord
-                val mfgData = mutableMapOf<Int, ByteArray>()
-                record?.manufacturerSpecificData?.let { sparse ->
-                    for (i in 0 until sparse.size()) {
-                        mfgData[sparse.keyAt(i)] = sparse.valueAt(i)
+        val callback =
+            object : ScanCallback() {
+                override fun onScanResult(
+                    callbackType: Int,
+                    result: ScanResult,
+                ) {
+                    val record = result.scanRecord
+                    val mfgData = mutableMapOf<Int, ByteArray>()
+                    record?.manufacturerSpecificData?.let { sparse ->
+                        for (i in 0 until sparse.size()) {
+                            mfgData[sparse.keyAt(i)] = sparse.valueAt(i)
+                        }
                     }
-                }
-                val svcData = mutableMapOf<String, ByteArray>()
-                record?.serviceData?.forEach { (uuid, data) ->
-                    svcData[uuid.toString()] = data
-                }
-                val svcUuids = record?.serviceUuids?.map { it.toString() } ?: emptyList()
+                    val svcData = mutableMapOf<String, ByteArray>()
+                    record?.serviceData?.forEach { (uuid, data) ->
+                        svcData[uuid.toString()] = data
+                    }
+                    val svcUuids = record?.serviceUuids?.map { it.toString() } ?: emptyList()
 
-                results[result.device.address] = ScannedDevice(
-                    name = result.device.name,
-                    address = result.device.address,
-                    rssi = result.rssi,
-                    manufacturerData = mfgData,
-                    serviceData = svcData,
-                    serviceUuids = svcUuids,
-                    rawBytes = record?.bytes,
-                    device = result.device
-                )
+                    results[result.device.address] =
+                        ScannedDevice(
+                            name = result.device.name,
+                            address = result.device.address,
+                            rssi = result.rssi,
+                            manufacturerData = mfgData,
+                            serviceData = svcData,
+                            serviceUuids = svcUuids,
+                            rawBytes = record?.bytes,
+                            device = result.device,
+                        )
+                }
+
+                override fun onScanFailed(errorCode: Int) {
+                    // Scan failed, results will be empty
+                }
             }
 
-            override fun onScanFailed(errorCode: Int) {
-                // Scan failed, results will be empty
-            }
-        }
-
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
+        val settings =
+            ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
 
         // Use unfiltered scan and filter manually — Android's ScanFilter
         // does not reliably match 128-bit service UUIDs on all devices.
-        Log.d(TAG, "scan: starting (unfiltered, manual filter=${serviceUuid}), timeout=${timeout}ms")
+        Log.d(TAG, "scan: starting (unfiltered, manual filter=$serviceUuid), timeout=${timeout}ms")
         scanner.startScan(null, settings, callback)
         delay(timeout)
         scanner.stopScan(callback)
 
-        val filtered = if (serviceUuid != null) {
-            val target = serviceUuid.toString()
-            results.values.filter { device ->
-                device.serviceUuids.any { it.equals(target, ignoreCase = true) }
+        val filtered =
+            if (serviceUuid != null) {
+                val target = serviceUuid.toString()
+                results.values.filter { device ->
+                    device.serviceUuids.any { it.equals(target, ignoreCase = true) }
+                }
+            } else {
+                results.values.toList()
             }
-        } else {
-            results.values.toList()
-        }
 
         Log.d(TAG, "scan: found ${filtered.size}/${results.size} devices: ${filtered.map { "${it.address}(${it.name},rssi=${it.rssi})" }}")
         return filtered.sortedByDescending { it.rssi }
@@ -170,10 +216,11 @@ class BleTransport(private val context: Context) {
         Log.d(TAG, "connect: address=${device.address}, name=${device.name}, bondState=${device.device.bondState}")
 
         // Connect
-        val success = suspendCancellableCoroutine { cont ->
-            connectCont = { ok -> cont.resume(ok) }
-            gatt = device.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        }
+        val success =
+            suspendCancellableCoroutine { cont ->
+                connectCont = { ok -> cont.resume(ok) }
+                gatt = device.device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            }
         if (!success) {
             Log.e(TAG, "connect: GATT connection/service discovery failed")
             gatt?.close()
@@ -185,27 +232,30 @@ class BleTransport(private val context: Context) {
         Log.d(TAG, "connect: GATT connected, requesting MTU")
 
         // Request MTU
-        mtu = suspendCancellableCoroutine { cont ->
-            mtuCont = { newMtu -> cont.resume(newMtu) }
-            if (!g.requestMtu(247)) {
-                mtuCont = null
-                cont.resume(23)
+        mtu =
+            suspendCancellableCoroutine { cont ->
+                mtuCont = { newMtu -> cont.resume(newMtu) }
+                if (!g.requestMtu(247)) {
+                    mtuCont = null
+                    cont.resume(23)
+                }
             }
-        }
         Log.d(TAG, "connect: MTU=$mtu")
 
         // Find characteristic
         Log.d(TAG, "connect: looking for service $SERVICE_UUID among ${g.services.size} services: ${g.services.map { it.uuid }}")
-        val service = g.getService(SERVICE_UUID)
-            ?: throw RuntimeException("Service not found (discovered ${g.services.size} services: ${g.services.map { it.uuid }})")
+        val service =
+            g.getService(SERVICE_UUID)
+                ?: throw RuntimeException("Service not found (discovered ${g.services.size} services: ${g.services.map { it.uuid }})")
         writeChar = service.getCharacteristic(CHAR_UUID)
             ?: throw RuntimeException("Characteristic not found")
 
         // Enable notifications
         val wc = writeChar!!
         g.setCharacteristicNotification(wc, true)
-        val cccd = wc.getDescriptor(CCCD_UUID)
-            ?: throw RuntimeException("CCCD not found")
+        val cccd =
+            wc.getDescriptor(CCCD_UUID)
+                ?: throw RuntimeException("CCCD not found")
         suspendCancellableCoroutine { cont ->
             descriptorWriteCont = { cont.resume(Unit) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -225,17 +275,18 @@ class BleTransport(private val context: Context) {
 
         suspendCancellableCoroutine { cont ->
             writeComplete = { cont.resume(Unit) }
-            val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                g.writeCharacteristic(
-                    c, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                ) == BluetoothStatusCodes.SUCCESS
-            } else {
-                @Suppress("DEPRECATION")
-                c.value = data
-                c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                @Suppress("DEPRECATION")
-                g.writeCharacteristic(c)
-            }
+            val ok =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    g.writeCharacteristic(
+                        c, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE,
+                    ) == BluetoothStatusCodes.SUCCESS
+                } else {
+                    @Suppress("DEPRECATION")
+                    c.value = data
+                    c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                    @Suppress("DEPRECATION")
+                    g.writeCharacteristic(c)
+                }
             if (!ok) {
                 writeComplete = null
                 cont.resumeWithException(RuntimeException("Write failed"))

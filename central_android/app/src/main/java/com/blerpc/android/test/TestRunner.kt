@@ -23,7 +23,10 @@ class TestRunner(private val context: Context) {
         _logs.value = _logs.value + msg
     }
 
-    suspend fun runAll(iterations: Int = 1, device: ScannedDevice? = null) {
+    suspend fun runAll(
+        iterations: Int = 1,
+        device: ScannedDevice? = null,
+    ) {
         if (running) return
         running = true
         _logs.value = emptyList()
@@ -90,10 +93,11 @@ class TestRunner(private val context: Context) {
                 }
 
                 runTest(client, "counter_upload") {
-                    val messages = (0 until 5).map { i ->
-                        blerpc.Blerpc.CounterUploadRequest.newBuilder()
-                            .setSeq(i).setValue(i * 10).build()
-                    }
+                    val messages =
+                        (0 until 5).map { i ->
+                            blerpc.Blerpc.CounterUploadRequest.newBuilder()
+                                .setSeq(i).setValue(i * 10).build()
+                        }
                     val resp = client.counterUpload(messages)
                     check(resp.receivedCount == 5) { "Expected received_count=5, got ${resp.receivedCount}" }
                 }
@@ -109,7 +113,6 @@ class TestRunner(private val context: Context) {
             benchmarkEchoRoundtrip(client)
             benchmarkDataWriteThroughput(client)
             benchmarkStreamThroughput(client)
-
         } catch (e: Exception) {
             log("[ERROR] ${e.message}")
         } finally {
@@ -135,8 +138,14 @@ class TestRunner(private val context: Context) {
         val kbPerSec = totalBytes.toDouble() / 1024.0 / (elapsedMs.toDouble() / 1000.0)
         val msPerCall = elapsedMs.toDouble() / count
 
-        log("[BENCH] flash_read_throughput: %.1f KB/s (%d bytes in %d ms, %.1f ms/call)".format(
-            kbPerSec, totalBytes, elapsedMs, msPerCall))
+        log(
+            "[BENCH] flash_read_throughput: %.1f KB/s (%d bytes in %d ms, %.1f ms/call)".format(
+                kbPerSec,
+                totalBytes,
+                elapsedMs,
+                msPerCall,
+            ),
+        )
     }
 
     private suspend fun benchmarkFlashReadOverhead(client: BlerpcClient) {
@@ -152,8 +161,13 @@ class TestRunner(private val context: Context) {
         val elapsedMs = System.currentTimeMillis() - startMs
         val msPerCall = elapsedMs.toDouble() / count
 
-        log("[BENCH] flash_read_overhead: %.1f ms/call (1 byte × %d calls in %d ms)".format(
-            msPerCall, count, elapsedMs))
+        log(
+            "[BENCH] flash_read_overhead: %.1f ms/call (1 byte × %d calls in %d ms)".format(
+                msPerCall,
+                count,
+                elapsedMs,
+            ),
+        )
     }
 
     private suspend fun benchmarkEchoRoundtrip(client: BlerpcClient) {
@@ -169,8 +183,13 @@ class TestRunner(private val context: Context) {
         val elapsedMs = System.currentTimeMillis() - startMs
         val msPerCall = elapsedMs.toDouble() / count
 
-        log("[BENCH] echo_roundtrip: %.1f ms/call (%d calls in %d ms)".format(
-            msPerCall, count, elapsedMs))
+        log(
+            "[BENCH] echo_roundtrip: %.1f ms/call (%d calls in %d ms)".format(
+                msPerCall,
+                count,
+                elapsedMs,
+            ),
+        )
     }
 
     private suspend fun benchmarkDataWriteThroughput(client: BlerpcClient) {
@@ -190,8 +209,14 @@ class TestRunner(private val context: Context) {
         val kbPerSec = totalBytes.toDouble() / 1024.0 / (elapsedMs.toDouble() / 1000.0)
         val msPerCall = elapsedMs.toDouble() / count
 
-        log("[BENCH] data_write_throughput: %.1f KB/s (%d bytes in %d ms, %.1f ms/call)".format(
-            kbPerSec, totalBytes, elapsedMs, msPerCall))
+        log(
+            "[BENCH] data_write_throughput: %.1f KB/s (%d bytes in %d ms, %.1f ms/call)".format(
+                kbPerSec,
+                totalBytes,
+                elapsedMs,
+                msPerCall,
+            ),
+        )
     }
 
     private suspend fun benchmarkStreamThroughput(client: BlerpcClient) {
@@ -202,23 +227,38 @@ class TestRunner(private val context: Context) {
         val results = client.counterStream(count = count)
         val elapsedMs1 = System.currentTimeMillis() - startMs1
         check(results.size == count)
-        log("[BENCH] counter_stream (P→C): %d items in %d ms (%.1f ms/item)".format(
-            count, elapsedMs1, elapsedMs1.toDouble() / count))
+        log(
+            "[BENCH] counter_stream (P→C): %d items in %d ms (%.1f ms/item)".format(
+                count,
+                elapsedMs1,
+                elapsedMs1.toDouble() / count,
+            ),
+        )
 
         // counter_upload (C→P): central sends 'count' requests
-        val messages = (0 until count).map { i ->
-            blerpc.Blerpc.CounterUploadRequest.newBuilder()
-                .setSeq(i).setValue(i * 10).build()
-        }
+        val messages =
+            (0 until count).map { i ->
+                blerpc.Blerpc.CounterUploadRequest.newBuilder()
+                    .setSeq(i).setValue(i * 10).build()
+            }
         val startMs2 = System.currentTimeMillis()
         val resp = client.counterUpload(messages)
         val elapsedMs2 = System.currentTimeMillis() - startMs2
         check(resp.receivedCount == count)
-        log("[BENCH] counter_upload (C→P): %d items in %d ms (%.1f ms/item)".format(
-            count, elapsedMs2, elapsedMs2.toDouble() / count))
+        log(
+            "[BENCH] counter_upload (C→P): %d items in %d ms (%.1f ms/item)".format(
+                count,
+                elapsedMs2,
+                elapsedMs2.toDouble() / count,
+            ),
+        )
     }
 
-    private suspend inline fun runTest(client: BlerpcClient, name: String, block: () -> Unit) {
+    private suspend inline fun runTest(
+        client: BlerpcClient,
+        name: String,
+        block: () -> Unit,
+    ) {
         try {
             block()
             passCount++

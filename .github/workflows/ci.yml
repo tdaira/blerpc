@@ -20,9 +20,9 @@ jobs:
           python-version: "3.13"
       - run: pip install ruff
       - name: Ruff lint
-        run: ruff check central_py/ peripheral_py/
+        run: ruff check central_py/ peripheral_py/ tools/*.py
       - name: Ruff format check
-        run: ruff format --check central_py/ peripheral_py/
+        run: ruff format --check central_py/ peripheral_py/ tools/*.py
 
   python-test:
     name: Python Tests
@@ -47,15 +47,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: clang-format check
         run: |
-          clang-format --dry-run --Werror \
-            peripheral_fw/src/ble_service.c \
-            peripheral_fw/src/ble_service.h \
-            peripheral_fw/src/handlers.c \
-            peripheral_fw/src/handlers.h \
-            peripheral_fw/src/main.c \
-            central_fw/src/main.c \
-            central_fw/src/ble_central.c \
-            central_fw/src/ble_central.h
+          find peripheral_fw/src central_fw/src -name '*.c' -o -name '*.h' \
+            | grep -v -E '(generated_|blerpc\.pb\.)' \
+            | xargs clang-format --dry-run --Werror
 
   android-build:
     name: Android Build
@@ -67,6 +61,9 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Lint
+        working-directory: central_android
+        run: ./gradlew ktlintCheck
       - name: Build
         working-directory: central_android
         run: ./gradlew assembleDebug
@@ -79,8 +76,11 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install tools
+        run: brew install xcodegen swiftlint
+      - name: SwiftLint
+        working-directory: central_ios
+        run: swiftlint
       - name: Generate Xcode project
         working-directory: central_ios
         run: xcodegen generate
