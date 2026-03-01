@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: clang-format check
         run: |
-          find peripheral_fw/src central_fw/src -name '*.c' -o -name '*.h' \
+          find peripheral_fw/src central_fw/src \( -name '*.c' -o -name '*.h' \) \
             | grep -v -E '(generated_|blerpc\.pb\.)' \
             | xargs clang-format --dry-run --Werror
 
