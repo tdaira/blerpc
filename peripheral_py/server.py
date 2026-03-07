@@ -14,6 +14,7 @@ import time
 
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
+    BLERPC_ERROR_BUSY,
     BLERPC_ERROR_RESPONSE_TOO_LARGE,
     CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
     Container,
@@ -268,6 +269,17 @@ class BlerpcPeripheral:
         except Exception:
             logger.exception("Error processing request")
 
+    def _send_error(self, transaction_id: int, error_code: int):
+        """Send an ERROR control container to the central."""
+        err = Container(
+            transaction_id=transaction_id,
+            sequence_number=0,
+            container_type=ContainerType.CONTROL,
+            control_cmd=ControlCmd.ERROR,
+            payload=bytes([error_code]),
+        )
+        self._send_container_sync(err)
+
     def _process_request(self, payload: bytes, transaction_id: int):
         # Snapshot session under lock for thread safety
         with self._state_lock:
@@ -279,6 +291,7 @@ class BlerpcPeripheral:
                 payload = session.decrypt(payload)
             except RuntimeError as e:
                 logger.error("Decryption/replay error: %s", e)
+                self._send_error(transaction_id, BLERPC_ERROR_BUSY)
                 return
         elif self._encryption_supported:
             # Reject unencrypted data when encryption is supported

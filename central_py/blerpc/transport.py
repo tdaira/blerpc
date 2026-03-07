@@ -108,12 +108,12 @@ class BleTransport:
         if self._client and self._client.is_connected:
             try:
                 await self._client.stop_notify(CHAR_UUID)
-            except Exception:
-                pass  # May already be disconnected
+            except (OSError, EOFError) as e:
+                logger.debug("stop_notify during disconnect: %s", e)
             try:
                 await self._client.disconnect()
-            except Exception:
-                pass
+            except (OSError, EOFError) as e:
+                logger.debug("disconnect error: %s", e)
             logger.info("Disconnected")
         self._client = None
 
