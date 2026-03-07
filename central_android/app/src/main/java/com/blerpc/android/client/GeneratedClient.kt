@@ -8,17 +8,17 @@ import com.google.protobuf.ByteString
  * Subclass and override for custom behavior.
  */
 abstract class GeneratedClient {
-    protected abstract suspend fun call(
+    abstract suspend fun call(
         cmdName: String,
         requestData: ByteArray,
     ): ByteArray
 
-    protected abstract suspend fun streamReceive(
+    abstract suspend fun streamReceive(
         cmdName: String,
         requestData: ByteArray,
     ): List<ByteArray>
 
-    protected abstract suspend fun streamSend(
+    abstract suspend fun streamSend(
         cmdName: String,
         messages: List<ByteArray>,
         finalCmdName: String,
