@@ -41,13 +41,13 @@ data class ScannedDevice(
 )
 
 @SuppressLint("MissingPermission")
-class BleTransport(private val context: Context) {
+class BleTransport(private val context: Context) : Transport {
     private var gatt: BluetoothGatt? = null
     private var writeChar: BluetoothGattCharacteristic? = null
     private val notifyChannel = Channel<ByteArray>(Channel.UNLIMITED)
-    var mtu: Int = 23
+    override var mtu: Int = 23
         private set
-    val isConnected: Boolean get() = gatt != null
+    override val isConnected: Boolean get() = gatt != null
 
     @Volatile private var writeComplete: (() -> Unit)? = null
 
@@ -269,7 +269,7 @@ class BleTransport(private val context: Context) {
         }
     }
 
-    suspend fun write(data: ByteArray) {
+    override suspend fun write(data: ByteArray) {
         val g = gatt ?: throw IllegalStateException("Not connected")
         val c = writeChar ?: throw IllegalStateException("No characteristic")
 
@@ -294,17 +294,17 @@ class BleTransport(private val context: Context) {
         }
     }
 
-    suspend fun readNotify(timeoutMs: Long): ByteArray {
+    override suspend fun readNotify(timeoutMs: Long): ByteArray {
         return withTimeout(timeoutMs) {
             notifyChannel.receive()
         }
     }
 
-    fun drainNotifications() {
+    override fun drainNotifications() {
         while (notifyChannel.tryReceive().isSuccess) { /* discard */ }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         gatt?.let {
             it.close()
             gatt = null

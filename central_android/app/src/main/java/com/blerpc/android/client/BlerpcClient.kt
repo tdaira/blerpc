@@ -5,6 +5,7 @@ import android.util.Log
 import com.blerpc.android.ble.BleTransport
 import com.blerpc.android.ble.SERVICE_UUID
 import com.blerpc.android.ble.ScannedDevice
+import com.blerpc.android.ble.Transport
 import com.blerpc.protocol.BLERPC_ERROR_RESPONSE_TOO_LARGE
 import com.blerpc.protocol.BlerpcCryptoSession
 import com.blerpc.protocol.CAPABILITY_FLAG_ENCRYPTION_SUPPORTED
@@ -36,10 +37,14 @@ class PeripheralErrorException(val errorCode: Byte) :
 class ProtocolException(message: String) : Exception(message)
 
 class BlerpcClient(
-    context: Context,
+    val transport: Transport,
     private val requireEncryption: Boolean = true,
 ) : GeneratedClient() {
-    val transport = BleTransport(context)
+    constructor(
+        context: Context,
+        requireEncryption: Boolean = true,
+    ) : this(BleTransport(context) as Transport, requireEncryption)
+
     private var splitter: ContainerSplitter? = null
     private val assembler = ContainerAssembler()
     private var timeoutMs: Long = 100
@@ -52,15 +57,19 @@ class BlerpcClient(
     val mtu: Int get() = transport.mtu
     val isEncrypted: Boolean get() = session != null
 
+    internal fun initForTest(mtu: Int = 247) {
+        splitter = ContainerSplitter(mtu = mtu)
+    }
+
     suspend fun scan(
         timeout: Long = 5000,
         serviceUuid: UUID? = SERVICE_UUID,
     ): List<ScannedDevice> {
-        return transport.scan(timeout, serviceUuid)
+        return (transport as BleTransport).scan(timeout, serviceUuid)
     }
 
     suspend fun connect(device: ScannedDevice) {
-        transport.connect(device)
+        (transport as BleTransport).connect(device)
         splitter = ContainerSplitter(mtu = transport.mtu)
 
         try {
