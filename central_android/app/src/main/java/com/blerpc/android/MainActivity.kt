@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import android.util.Log
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.android.client.BlerpcClient
 import com.blerpc.android.test.TestRunner
@@ -80,8 +81,10 @@ class MainActivity : ComponentActivity() {
                             try {
                                 val client = BlerpcClient(applicationContext)
                                 scannedDevices = client.scan()
-                            } catch (_: Exception) {
-                                // Scan failed
+                            } catch (e: SecurityException) {
+                                Log.e("MainActivity", "Scan failed: missing permission", e)
+                            } catch (e: IllegalStateException) {
+                                Log.e("MainActivity", "Scan failed: BLE unavailable", e)
                             } finally {
                                 isScanning = false
                             }
