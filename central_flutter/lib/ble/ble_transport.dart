@@ -12,8 +12,14 @@ class ScannedDevice {
   final BluetoothDevice device;
   final String? name;
   final String address;
+  final int rssi;
 
-  ScannedDevice({required this.device, this.name, required this.address});
+  ScannedDevice({
+    required this.device,
+    this.name,
+    required this.address,
+    this.rssi = 0,
+  });
 }
 
 class BleTransport {
@@ -67,6 +73,7 @@ class BleTransport {
                 ? r.advertisementData.advName
                 : null,
         address: r.device.remoteId.str,
+        rssi: r.rssi,
       ));
     }
     return devices;

@@ -23,11 +23,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,30 +42,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blerpc.android.ble.ScannedDevice
+import com.blerpc.android.design.BleBadge
+import com.blerpc.android.design.BleBadgeTone
+import com.blerpc.android.design.BleMono
+import com.blerpc.android.design.BleOnAccent
+import com.blerpc.android.design.BleRadius
+import com.blerpc.android.design.BleSignalBars
+import com.blerpc.android.design.BleSpacing
+import com.blerpc.android.design.rssiToLevel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-// blerpc.net dark theme colors
-private val BgPrimary = Color(0xFF1A1B26)
-private val BgSecondary = Color(0xFF24283B)
-private val BgCode = Color(0xFF1E2030)
-private val TextPrimary = Color(0xFFC0CAF5)
-private val TextSecondary = Color(0xFFA9B1D6)
-private val Accent = Color(0xFF0082FC)
-private val Border = Color(0xFF3B4261)
-private val Success = Color(0xFF9ECE6A)
-private val Error = Color(0xFFF7768E)
-private val NavBg = Color(0xFF16161E)
 
 @Suppress("ktlint:standard:function-naming")
 @Composable
@@ -75,6 +71,7 @@ fun LogScreen(
     onScan: () -> Unit,
     onSelectDevice: (ScannedDevice) -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     val listState = rememberLazyListState()
 
     LaunchedEffect(logs.size) {
@@ -87,61 +84,71 @@ fun LogScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(BgPrimary)
-                .padding(16.dp),
+                .background(colors.background)
+                .padding(BleSpacing.s4),
     ) {
+        // ── Brand wordmark ──────────────────────────────────────
         Text(
             text =
                 buildAnnotatedString {
-                    withStyle(SpanStyle(color = Accent, fontWeight = FontWeight.Black)) {
+                    withStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.Black)) {
                         append("ble")
                     }
-                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Black)) {
+                    withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.Black)) {
                         append("RPC")
                     }
-                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Normal)) {
+                    withStyle(SpanStyle(color = colors.onBackground, fontWeight = FontWeight.Normal)) {
                         append(" Central")
                     }
                 },
             fontSize = 24.sp,
-            modifier = Modifier.padding(bottom = 16.dp),
+            modifier = Modifier.padding(bottom = BleSpacing.s4),
         )
 
+        // ── Scan action ─────────────────────────────────────────
         Button(
             onClick = onScan,
             enabled = !isScanning && !isRunning,
+            shape = RoundedCornerShape(BleRadius.md),
             colors =
                 ButtonDefaults.buttonColors(
-                    containerColor = Accent,
-                    contentColor = Color.White,
-                    disabledContainerColor = BgSecondary,
-                    disabledContentColor = TextSecondary,
+                    containerColor = colors.primary,
+                    contentColor = BleOnAccent,
+                    disabledContainerColor = colors.surface,
+                    disabledContentColor = colors.onSurfaceVariant,
                 ),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (isScanning) "Scanning..." else "Scan")
+            Text(if (isScanning) "Scanning…" else "Scan")
         }
 
+        // ── Device list ─────────────────────────────────────────
         if (scannedDevices.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(BleSpacing.s3))
 
-            Text(
-                text = "Devices (${scannedDevices.size})",
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = BleSpacing.s2),
+            ) {
+                Text(
+                    text = "DEVICES",
+                    color = colors.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.8.sp,
+                )
+                Spacer(Modifier.width(BleSpacing.s2))
+                BleBadge(text = scannedDevices.size.toString(), tone = BleBadgeTone.Blue)
+            }
 
             LazyColumn(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(BgSecondary)
-                        .border(1.dp, Border, RoundedCornerShape(8.dp))
-                        .padding(4.dp),
+                        .heightIn(max = 220.dp)
+                        .clip(RoundedCornerShape(BleRadius.xl))
+                        .background(colors.surface)
+                        .border(1.dp, colors.outline, RoundedCornerShape(BleRadius.xl)),
             ) {
                 items(scannedDevices, key = { it.address }) { device ->
                     Row(
@@ -149,38 +156,46 @@ fun LogScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = !isRunning) { onSelectDevice(device) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                                .padding(horizontal = BleSpacing.s3, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(BleSpacing.s3),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        BleSignalBars(level = rssiToLevel(device.rssi))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = device.name ?: "Unknown",
-                                color = TextPrimary,
+                                color = colors.onSurface,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                             )
                             Text(
                                 text = device.address,
-                                color = TextSecondary,
+                                color = colors.onSurfaceVariant,
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = BleMono,
                             )
                         }
                         Text(
                             text = "${device.rssi} dBm",
-                            color = TextSecondary,
+                            color = colors.onSurfaceVariant,
                             fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = BleMono,
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                    Divider(color = Border)
+                    Divider(color = colors.outline)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(BleSpacing.s3))
 
+        // ── Copy logs ───────────────────────────────────────────
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         var showCopied by remember { mutableStateOf(false) }
@@ -200,44 +215,55 @@ fun LogScreen(
                     }
                 },
                 enabled = logs.isNotEmpty(),
+                shape = RoundedCornerShape(BleRadius.md),
             ) {
                 Icon(
                     imageVector = if (showCopied) Icons.Default.Check else Icons.Default.Share,
                     contentDescription = null,
-                    tint = if (logs.isEmpty()) TextSecondary else Accent,
+                    tint = if (logs.isEmpty()) colors.onSurfaceVariant else colors.primary,
                     modifier = Modifier.size(16.dp),
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(BleSpacing.s1))
                 Text(
                     text = if (showCopied) "Copied!" else "Copy Logs",
-                    color = if (logs.isEmpty()) TextSecondary else Accent,
+                    color = if (logs.isEmpty()) colors.onSurfaceVariant else colors.primary,
                     fontSize = 13.sp,
                 )
             }
         }
 
+        // ── Log console (code surface) ──────────────────────────
         LazyColumn(
             state = listState,
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BgCode)
-                    .border(1.dp, Border, RoundedCornerShape(8.dp))
-                    .padding(12.dp),
+                    .clip(RoundedCornerShape(BleRadius.lg))
+                    .background(colors.surfaceVariant)
+                    .border(1.dp, colors.outline, RoundedCornerShape(BleRadius.lg))
+                    .padding(BleSpacing.s3),
         ) {
+            if (logs.isEmpty()) {
+                item {
+                    Text(
+                        text = "Scan for devices, then tap one to run tests.",
+                        color = colors.onSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
             items(logs) { line ->
                 val color =
                     when {
-                        line.startsWith("[PASS]") -> Success
-                        line.startsWith("[FAIL]") || line.startsWith("[ERROR]") -> Error
-                        line.startsWith("[BENCH]") -> Accent
-                        else -> TextPrimary
+                        line.startsWith("[PASS]") -> colors.tertiary
+                        line.startsWith("[FAIL]") || line.startsWith("[ERROR]") -> colors.error
+                        line.startsWith("[BENCH]") -> colors.primary
+                        else -> colors.onSurface
                     }
                 Text(
                     text = line,
                     color = color,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = BleMono,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(vertical = 1.dp),
                 )

@@ -8,6 +8,7 @@ export interface ScannedDevice {
   device: Device;
   name: string | null;
   address: string;
+  rssi: number;
 }
 
 export class BleTransport {
@@ -59,6 +60,7 @@ export class BleTransport {
             device,
             name: device.name ?? device.localName ?? null,
             address: device.id,
+            rssi: device.rssi ?? 0,
           });
         }
         resolve(devices);

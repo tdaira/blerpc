@@ -105,14 +105,15 @@ class TestRunner(private val context: Context) {
 
             log("=== Functional: $passCount passed, $failCount failed ($iterations iterations) ===")
 
-            // Throughput benchmarks
+            // Throughput benchmarks — run each independently so one failing
+            // benchmark (e.g. flash_read gated off) does not abort the rest.
             log("")
             log("=== Throughput Benchmarks ===")
-            benchmarkFlashReadThroughput(client)
-            benchmarkFlashReadOverhead(client)
-            benchmarkEchoRoundtrip(client)
-            benchmarkDataWriteThroughput(client)
-            benchmarkStreamThroughput(client)
+            runBench(client, "flash_read_throughput") { benchmarkFlashReadThroughput(client) }
+            runBench(client, "flash_read_overhead") { benchmarkFlashReadOverhead(client) }
+            runBench(client, "echo_roundtrip") { benchmarkEchoRoundtrip(client) }
+            runBench(client, "data_write_throughput") { benchmarkDataWriteThroughput(client) }
+            runBench(client, "stream_throughput") { benchmarkStreamThroughput(client) }
         } catch (e: Exception) {
             log("[ERROR] ${e.message}")
         } finally {
@@ -252,6 +253,20 @@ class TestRunner(private val context: Context) {
                 elapsedMs2.toDouble() / count,
             ),
         )
+    }
+
+    private suspend inline fun runBench(
+        client: BlerpcClient,
+        name: String,
+        block: () -> Unit,
+    ) {
+        try {
+            block()
+        } catch (e: Exception) {
+            log("[FAIL] bench $name: ${e.message}")
+            delay(500)
+            client.transport.drainNotifications()
+        }
     }
 
     private suspend inline fun runTest(
