@@ -17,6 +17,7 @@ import {
 } from '@blerpc/protocol-rn';
 import { BleTransport, ScannedDevice } from '../ble/BleTransport';
 import { GeneratedClient } from './GeneratedClient';
+import { KnownKeys, loadKnownKeys, saveKnownKeys, checkOrStore } from './knownKeys';
 
 export class PayloadTooLargeError extends Error {
   constructor(
@@ -57,9 +58,17 @@ export class BlerpcClient extends GeneratedClient {
   // Encryption state
   private _session: BlerpcCryptoSession | null = null;
 
-  constructor(requireEncryption = true) {
+  // TOFU identity pinning (on by default). Without it the E2E session is
+  // encrypted but not authenticated against a rogue peripheral. The known-keys
+  // map is loaded before the key exchange so the verify callback can be sync.
+  private readonly pinIdentity: boolean;
+  private _peerAddress: string | null = null;
+  private _knownKeys: KnownKeys = {};
+
+  constructor(requireEncryption = true, pinIdentity = true) {
     super();
     this.requireEncryption = requireEncryption;
+    this.pinIdentity = pinIdentity;
   }
 
   get mtu(): number {
@@ -90,6 +99,10 @@ export class BlerpcClient extends GeneratedClient {
   }
 
   async connect(device: ScannedDevice): Promise<void> {
+    this._peerAddress = device.address;
+    if (this.pinIdentity) {
+      this._knownKeys = await loadKnownKeys();
+    }
     await this.transport.connect(device);
     this._splitter = new ContainerSplitter(this.transport.mtu);
 
@@ -169,6 +182,14 @@ export class BlerpcClient extends GeneratedClient {
   private async _performKeyExchange(): Promise<void> {
     const s = this._splitter!;
 
+    // TOFU identity pinning: verify the peripheral's Ed25519 identity key
+    // against the pinned one (stored on first use, rejected on mismatch).
+    const address = this._peerAddress;
+    const verifyKeyCb =
+      this.pinIdentity && address !== null
+        ? (pub: Uint8Array) => checkOrStore(this._knownKeys, address, pub)
+        : undefined;
+
     try {
       this._session = await centralPerformKeyExchange({
         send: async (payload: Uint8Array) => {
@@ -187,7 +208,11 @@ export class BlerpcClient extends GeneratedClient {
           }
           return resp.payload;
         },
+        verifyKeyCb,
       });
+      if (verifyKeyCb) {
+        await saveKnownKeys(this._knownKeys);
+      }
       console.log('E2E encryption established');
     } catch (e) {
       console.log('Key exchange failed:', e);

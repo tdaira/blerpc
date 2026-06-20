@@ -29,6 +29,12 @@ final class BlerpcClient: GeneratedClientProtocol {
     private var session: BlerpcCryptoSession?
     var requireEncryption: Bool = true
 
+    // TOFU identity pinning (on by default). Without it the E2E session is
+    // encrypted but not authenticated against a rogue peripheral.
+    var pinIdentity: Bool = true
+    private let knownKeys = KnownKeyStore()
+    private var peerId: String?
+
     var mtu: Int { transport.mtu }
     var isEncrypted: Bool { session != nil }
 
@@ -40,6 +46,7 @@ final class BlerpcClient: GeneratedClientProtocol {
     }
 
     func connect(device: ScannedDevice) async throws {
+        peerId = device.id.uuidString
         try await transport.connect(device: device)
         let mtuVal = transport.mtu
         splitter = ContainerSplitter(mtu: mtuVal)
@@ -111,6 +118,15 @@ final class BlerpcClient: GeneratedClientProtocol {
     private func performKeyExchange() async throws {
         guard let s = splitter else { throw BlerpcClientError.notConnected }
 
+        // TOFU identity pinning: verify the peripheral's Ed25519 identity key
+        // against the pinned one (stored on first use, rejected on mismatch).
+        let verifyKeyCb: ((Data) -> Bool)? = pinIdentity
+            ? { [weak self] pub in
+                guard let self, let id = self.peerId else { return false }
+                return self.knownKeys.checkOrStore(deviceId: id, ed25519Pubkey: pub)
+            }
+            : nil
+
         session = try await BlerpcCrypto.centralPerformKeyExchange(
             send: { payload in
                 let tid = s.nextTransactionId()
@@ -125,7 +141,8 @@ final class BlerpcClient: GeneratedClientProtocol {
                     throw BlerpcClientError.keyExchangeFailed("Expected KEY_EXCHANGE response")
                 }
                 return resp.payload
-            }
+            },
+            verifyKeyCb: verifyKeyCb
         )
         logger.info("E2E encryption established")
     }

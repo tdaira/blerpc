@@ -6,6 +6,7 @@ import 'package:blerpc_protocol/blerpc_protocol.dart';
 
 import '../ble/ble_transport.dart';
 import 'generated_client.dart';
+import 'known_keys.dart';
 
 class PayloadTooLargeError implements Exception {
   final int actual;
@@ -42,6 +43,10 @@ class BlerpcClient with GeneratedClientMixin {
   final BleTransport transport = BleTransport();
   final bool requireEncryption;
 
+  // TOFU identity pinning (on by default). Without it the E2E session is
+  // encrypted but not authenticated against a rogue peripheral.
+  final bool pinIdentity;
+
   ContainerSplitter? _splitter;
   final _assembler = ContainerAssembler();
   Duration _timeout = const Duration(milliseconds: 100);
@@ -50,7 +55,11 @@ class BlerpcClient with GeneratedClientMixin {
   // Encryption state
   BlerpcCryptoSession? _session;
 
-  BlerpcClient({this.requireEncryption = true});
+  // TOFU state, loaded before the key exchange so the verify callback is sync.
+  KnownKeyStore? _knownKeys;
+  String? _peerAddress;
+
+  BlerpcClient({this.requireEncryption = true, this.pinIdentity = true});
 
   int get mtu => transport.mtu;
   bool get isEncrypted => _session != null;
@@ -79,6 +88,10 @@ class BlerpcClient with GeneratedClientMixin {
   }
 
   Future<void> connect(ScannedDevice device) async {
+    _peerAddress = device.address;
+    if (pinIdentity) {
+      _knownKeys = await KnownKeyStore.load();
+    }
     await transport.connect(device);
     _splitter = ContainerSplitter(mtu: transport.mtu);
 
@@ -148,6 +161,15 @@ class BlerpcClient with GeneratedClientMixin {
   Future<void> _performKeyExchange() async {
     final s = _splitter!;
 
+    // TOFU identity pinning: verify the peripheral's Ed25519 identity key
+    // against the pinned one (stored on first use, rejected on mismatch).
+    final knownKeys = _knownKeys;
+    final address = _peerAddress;
+    final bool Function(Uint8List)? verifyKeyCb =
+        (pinIdentity && knownKeys != null && address != null)
+            ? (pub) => knownKeys.checkOrStore(address, pub)
+            : null;
+
     try {
       _session = await centralPerformKeyExchange(
         send: (payload) async {
@@ -166,6 +188,7 @@ class BlerpcClient with GeneratedClientMixin {
           }
           return resp.payload;
         },
+        verifyKeyCb: verifyKeyCb,
       );
       dev.log('E2E encryption established');
     } catch (e) {

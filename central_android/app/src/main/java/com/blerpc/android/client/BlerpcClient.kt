@@ -39,11 +39,13 @@ class ProtocolException(message: String) : Exception(message)
 class BlerpcClient(
     val transport: Transport,
     private val requireEncryption: Boolean = true,
+    private val knownKeys: KnownKeyStore? = null,
+    private val pinIdentity: Boolean = true,
 ) : GeneratedClient() {
     constructor(
         context: Context,
         requireEncryption: Boolean = true,
-    ) : this(BleTransport(context) as Transport, requireEncryption)
+    ) : this(BleTransport(context) as Transport, requireEncryption, KnownKeyStore(context))
 
     private var splitter: ContainerSplitter? = null
     private val assembler = ContainerAssembler()
@@ -53,6 +55,9 @@ class BlerpcClient(
 
     // Encryption state
     private var session: BlerpcCryptoSession? = null
+
+    // Address of the peripheral being connected to, used as the TOFU pin key.
+    private var peerAddress: String? = null
 
     val mtu: Int get() = transport.mtu
     val isEncrypted: Boolean get() = session != null
@@ -69,6 +74,7 @@ class BlerpcClient(
     }
 
     suspend fun connect(device: ScannedDevice) {
+        peerAddress = device.address
         (transport as BleTransport).connect(device)
         splitter = ContainerSplitter(mtu = transport.mtu)
 
@@ -150,6 +156,16 @@ class BlerpcClient(
     private suspend fun performKeyExchange() {
         val s = splitter ?: throw IllegalStateException("Not connected")
 
+        // TOFU identity pinning (on by default): verify the peripheral's Ed25519
+        // identity key against the pinned one. Without this the E2E session is
+        // encrypted but not authenticated against a rogue peripheral.
+        val verifyKeyCb: ((ByteArray) -> Boolean)? =
+            if (pinIdentity && knownKeys != null) {
+                { pub -> knownKeys.checkOrStore(peerAddress ?: "", pub) }
+            } else {
+                null
+            }
+
         try {
             session =
                 centralPerformKeyExchange(
@@ -168,6 +184,7 @@ class BlerpcClient(
                         }
                         resp.payload
                     },
+                    verifyKeyCb = verifyKeyCb,
                 )
             Log.i(TAG, "E2E encryption established")
         } catch (e: Exception) {
