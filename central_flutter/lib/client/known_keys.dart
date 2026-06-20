@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,12 +10,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// central pinning that identity: on first connection the key is stored; on
 /// later connections a changed key is rejected.
 ///
-/// Backed by [SharedPreferences] (per-app, survives restarts).
+/// Backed by [SharedPreferences] (per-app, survives restarts). The map is
+/// loaded before the key exchange so [checkOrStore] can run synchronously
+/// inside the verify callback; [persist] is awaited afterwards to flush it.
 class KnownKeyStore {
-  KnownKeyStore(this._prefs);
+  KnownKeyStore(this._prefs) {
+    final raw = _prefs.getString(_storeKey);
+    _keys = raw == null
+        ? <String, String>{}
+        : (jsonDecode(raw) as Map).cast<String, String>();
+  }
 
   final SharedPreferences _prefs;
-  static const String _prefix = 'blerpc_known_key_';
+  static const String _storeKey = 'blerpc_known_keys';
+  late final Map<String, String> _keys;
+  bool _dirty = false;
 
   /// Load the store. Call before the key exchange so [checkOrStore] can run
   /// synchronously inside the verify callback.
@@ -28,11 +38,20 @@ class KnownKeyStore {
   bool checkOrStore(String address, Uint8List ed25519Pubkey) {
     final hex =
         ed25519Pubkey.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    final stored = _prefs.getString('$_prefix$address');
+    final stored = _keys[address];
     if (stored == null) {
-      _prefs.setString('$_prefix$address', hex); // persisted asynchronously
+      _keys[address] = hex;
+      _dirty = true;
       return true;
     }
     return stored == hex;
+  }
+
+  /// Flush newly pinned keys to disk. Call after a successful key exchange.
+  Future<void> persist() async {
+    if (_dirty) {
+      await _prefs.setString(_storeKey, jsonEncode(_keys));
+      _dirty = false;
+    }
   }
 }

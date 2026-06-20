@@ -190,6 +190,8 @@ class BlerpcClient with GeneratedClientMixin {
         },
         verifyKeyCb: verifyKeyCb,
       );
+      // Flush any newly pinned key to disk (TOFU survives restarts).
+      await knownKeys?.persist();
       dev.log('E2E encryption established');
     } catch (e) {
       dev.log('Key exchange failed: $e');
