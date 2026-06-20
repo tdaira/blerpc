@@ -8,7 +8,6 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.blerpc.android.ble.ScannedDevice
 import com.blerpc.android.client.BlerpcClient
+import com.blerpc.android.design.BleRpcTheme
 import com.blerpc.android.test.TestRunner
 import com.blerpc.android.ui.LogScreen
 import kotlinx.coroutines.CoroutineScope
@@ -47,7 +47,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            // bleRPC is dark-first; force the Tokyo Night dark theme.
+            BleRpcTheme(darkTheme = true) {
                 val logs by testRunner.logs.collectAsState()
                 var isRunning by remember { mutableStateOf(false) }
                 var isScanning by remember { mutableStateOf(false) }

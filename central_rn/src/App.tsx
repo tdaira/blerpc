@@ -7,25 +7,14 @@ import {
   FlatList,
   Platform,
   PermissionsAndroid,
+  ActivityIndicator,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { ScannedDevice } from './ble/BleTransport';
 import { BlerpcClient } from './client/BlerpcClient';
 import { TestRunner } from './test/TestRunner';
-
-// blerpc.net dark theme colors
-const colors = {
-  bgPrimary: '#1A1B26',
-  bgSecondary: '#24283B',
-  bgCode: '#1E2030',
-  textPrimary: '#C0CAF5',
-  textSecondary: '#A9B1D6',
-  accent: '#0082FC',
-  border: '#3B4261',
-  success: '#9ECE6A',
-  error: '#F7768E',
-  navBg: '#16161E',
-};
+import { BleColors, BleSpacing, BleRadius, rssiToLevel } from './design/tokens';
+import { Wordmark, Badge, SignalBars, monoFont } from './design/components';
 
 interface LogEntry {
   id: number;
@@ -133,46 +122,57 @@ export default function App() {
   };
 
   const getLogColor = (text: string): string => {
-    if (text.startsWith('[PASS]')) return colors.success;
-    if (text.startsWith('[FAIL]') || text.startsWith('[ERROR]')) return colors.error;
-    if (text.startsWith('[BENCH]')) return colors.accent;
-    return colors.textPrimary;
+    if (text.startsWith('[PASS]')) return BleColors.success;
+    if (text.startsWith('[FAIL]') || text.startsWith('[ERROR]')) return BleColors.error;
+    if (text.startsWith('[BENCH]')) return BleColors.accent;
+    return BleColors.text;
   };
+
+  const disabled = scanning || running;
 
   return (
     <View style={styles.container}>
       <View style={styles.appBar}>
-        <Text style={styles.appBarTitle}>
-          <Text style={styles.titleBle}>ble</Text>
-          <Text style={styles.titleRpc}>RPC</Text>
-          <Text style={styles.titleCentral}> Central</Text>
-        </Text>
+        <Wordmark fontSize={20} />
       </View>
 
       <View style={styles.body}>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.button, (scanning || running) && styles.buttonDisabled]}
-            onPress={handleScan}
-            disabled={scanning || running}
-          >
-            <Text style={styles.buttonText}>{scanning ? 'Scanning...' : 'Scan'}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.button, disabled && styles.buttonDisabled]}
+          onPress={handleScan}
+          disabled={disabled}
+        >
+          {scanning ? (
+            <View style={styles.buttonContent}>
+              <ActivityIndicator size="small" color={BleColors.textSecondary} />
+              <Text style={[styles.buttonText, styles.buttonTextDisabled]}>Scanning…</Text>
+            </View>
+          ) : (
+            <Text style={styles.buttonText}>Scan</Text>
+          )}
+        </TouchableOpacity>
 
         {devices.length > 0 && (
           <View style={styles.deviceSection}>
-            <Text style={styles.sectionTitle}>Devices ({devices.length})</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>DEVICES</Text>
+              <Badge text={String(devices.length)} tone="blue" />
+            </View>
             <View style={styles.deviceList}>
               {devices.map((d, i) => (
                 <TouchableOpacity
                   key={d.address + i}
-                  style={styles.deviceItem}
+                  style={[styles.deviceItem, i < devices.length - 1 && styles.deviceItemBorder]}
                   onPress={() => handleRunTests(d)}
                   disabled={running}
                 >
-                  <Text style={styles.deviceName}>{d.name ?? 'Unknown'}</Text>
-                  <Text style={styles.deviceAddress}>{d.address}</Text>
+                  <SignalBars level={rssiToLevel(d.rssi)} />
+                  <View style={styles.deviceInfo}>
+                    <Text style={styles.deviceName}>{d.name ?? 'Unknown'}</Text>
+                    <Text style={styles.deviceAddress}>{d.address}</Text>
+                  </View>
+                  <Text style={styles.deviceRssi}>{d.rssi} dBm</Text>
+                  <Text style={styles.chevron}>›</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -191,7 +191,9 @@ export default function App() {
         <View style={styles.logContainer}>
           {logs.length === 0 ? (
             <View style={styles.logPlaceholder}>
-              <Text style={styles.placeholderText}>Scan for devices, then tap to run tests</Text>
+              <Text style={styles.placeholderText}>
+                Scan for devices, then tap one to run tests.
+              </Text>
             </View>
           ) : (
             <FlatList
@@ -213,105 +215,117 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bgPrimary,
+    backgroundColor: BleColors.bg,
   },
   appBar: {
-    backgroundColor: colors.navBg,
+    backgroundColor: BleColors.navBg,
     paddingTop: Platform.OS === 'ios' ? 54 : 40,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-  },
-  appBarTitle: {
-    fontSize: 20,
-  },
-  titleBle: {
-    color: colors.accent,
-    fontWeight: '900',
-  },
-  titleRpc: {
-    color: colors.textPrimary,
-    fontWeight: '900',
-  },
-  titleCentral: {
-    color: colors.textPrimary,
-    fontWeight: '400',
+    paddingBottom: BleSpacing.s3,
+    paddingHorizontal: BleSpacing.s4,
   },
   body: {
     flex: 1,
-    padding: 16,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
+    padding: BleSpacing.s4,
   },
   button: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    paddingVertical: 12,
+    backgroundColor: BleColors.accent,
+    borderRadius: BleRadius.md,
+    paddingVertical: BleSpacing.s3,
     alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: BleColors.bgSecondary,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: BleSpacing.s2,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: BleColors.onAccent,
     fontWeight: '600',
     fontSize: 16,
   },
+  buttonTextDisabled: {
+    color: BleColors.textSecondary,
+  },
   deviceSection: {
-    marginTop: 12,
+    marginTop: BleSpacing.s3,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: BleSpacing.s2,
+    marginBottom: BleSpacing.s2,
   },
   sectionTitle: {
-    color: colors.textPrimary,
+    color: BleColors.textSecondary,
     fontWeight: '600',
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: 12,
+    letterSpacing: 0.8,
   },
   deviceList: {
-    backgroundColor: colors.bgSecondary,
-    borderColor: colors.border,
+    backgroundColor: BleColors.bgSecondary,
+    borderColor: BleColors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    maxHeight: 200,
+    borderRadius: BleRadius.xl,
+    maxHeight: 220,
+    overflow: 'hidden',
   },
   deviceItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: BleSpacing.s3,
+    paddingHorizontal: BleSpacing.s3,
+    paddingVertical: 10,
+  },
+  deviceItemBorder: {
+    borderBottomColor: BleColors.border,
     borderBottomWidth: 1,
   },
+  deviceInfo: {
+    flex: 1,
+  },
   deviceName: {
-    color: colors.textPrimary,
+    color: BleColors.text,
     fontSize: 15,
     fontWeight: '500',
   },
   deviceAddress: {
-    color: colors.textSecondary,
+    color: BleColors.textSecondary,
     fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontFamily: monoFont,
+  },
+  deviceRssi: {
+    color: BleColors.textSecondary,
+    fontSize: 13,
+    fontFamily: monoFont,
+  },
+  chevron: {
+    color: BleColors.textSecondary,
+    fontSize: 18,
   },
   logHeader: {
     flexDirection: 'row',
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: BleSpacing.s3,
+    marginBottom: BleSpacing.s1,
   },
   spacer: {
     flex: 1,
   },
   copyText: {
-    color: colors.accent,
+    color: BleColors.accent,
     fontSize: 13,
   },
   copyTextDisabled: {
-    color: colors.textSecondary,
+    color: BleColors.textSecondary,
   },
   logContainer: {
     flex: 1,
-    backgroundColor: colors.bgCode,
-    borderColor: colors.border,
+    backgroundColor: BleColors.bgCode,
+    borderColor: BleColors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: BleRadius.lg,
     overflow: 'hidden',
   },
   logPlaceholder: {
@@ -320,13 +334,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderText: {
-    color: colors.textSecondary,
+    color: BleColors.textSecondary,
   },
   logContent: {
-    padding: 12,
+    padding: BleSpacing.s3,
   },
   logLine: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontFamily: monoFont,
     fontSize: 13,
     lineHeight: 18,
   },
