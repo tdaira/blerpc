@@ -526,17 +526,23 @@ int main(void)
                 ble_central_get_max_response_payload_size());
     }
 
-    /* Perform key exchange if peripheral supports encryption */
+    /* Key exchange. When encryption is compiled in it is REQUIRED (fail closed):
+     * the peripheral must advertise encryption and its pinned identity must
+     * verify, otherwise we refuse to proceed — never fall back to plaintext. */
+#ifdef CONFIG_BLERPC_ENCRYPTION
     uint16_t cap_flags = ble_central_get_capability_flags();
-    if (cap_flags & CAPABILITY_FLAG_ENCRYPTION_SUPPORTED) {
-        LOG_INF("Peripheral supports encryption, performing key exchange...");
-        err = ble_central_perform_key_exchange();
-        if (err) {
-            LOG_WRN("Key exchange failed (err %d), continuing without encryption", err);
-        } else {
-            LOG_INF("Encryption active: %s", ble_central_is_encrypted() ? "yes" : "no");
-        }
+    if (!(cap_flags & CAPABILITY_FLAG_ENCRYPTION_SUPPORTED)) {
+        LOG_ERR("Peripheral does not offer encryption — refusing (encryption required)");
+        return -1;
     }
+    LOG_INF("Performing key exchange...");
+    err = ble_central_perform_key_exchange();
+    if (err) {
+        LOG_ERR("Key exchange / peer identity verification failed (err %d) — aborting", err);
+        return -1;
+    }
+    LOG_INF("E2E encryption active (peer identity verified)");
+#endif
 
     /* Allow subscription to settle */
     k_sleep(K_MSEC(200));

@@ -579,6 +579,39 @@ static int kx_recv_cb(uint8_t *buf, size_t buf_size, size_t *out_len, void *ctx)
     return 0;
 }
 
+/* Fail closed at build time: pinning the peripheral's identity key is what makes
+ * the handshake MitM-resistant, so a 64-hex-char peer key MUST be configured. */
+BUILD_ASSERT(sizeof(CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY) == 64 + 1,
+             "CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY must be 64 hex chars "
+             "(the peripheral's Ed25519 identity public key); see keys.conf");
+
+static int hex_nibble(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static int hex_to_bytes(const char *hex, uint8_t *out, size_t out_len)
+{
+    for (size_t i = 0; i < out_len; i++) {
+        int hi = hex_nibble(hex[i * 2]);
+        int lo = hex_nibble(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) {
+            return -1;
+        }
+        out[i] = (uint8_t)((hi << 4) | lo);
+    }
+    return 0;
+}
+
 int ble_central_perform_key_exchange(void)
 {
     /* PSA Crypto must be initialized before any PSA operations */
@@ -588,15 +621,33 @@ int ble_central_perform_key_exchange(void)
         return -EIO;
     }
 
-    int rc =
-        blerpc_central_perform_key_exchange(kx_send_cb, kx_recv_cb, NULL, &crypto_session, NULL);
+    /* Parse the pinned peripheral identity key */
+    uint8_t expected_id[BLERPC_ED25519_PUBKEY_SIZE];
+    if (hex_to_bytes(CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY, expected_id, sizeof(expected_id)) !=
+        0) {
+        LOG_ERR("Invalid hex in CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY");
+        return -EINVAL;
+    }
+
+    /* Retrieve the peripheral's advertised identity key during the handshake */
+    uint8_t periph_id[BLERPC_ED25519_PUBKEY_SIZE];
+    int rc = blerpc_central_perform_key_exchange(kx_send_cb, kx_recv_cb, NULL, &crypto_session,
+                                                 periph_id);
     if (rc != 0) {
         LOG_ERR("Key exchange failed: %d", rc);
         return -EACCES;
     }
 
+    /* Pin the identity: the signed handshake alone does not bind the identity
+     * key, so reject any peripheral that is not the configured peer (MitM). */
+    if (memcmp(periph_id, expected_id, sizeof(expected_id)) != 0) {
+        LOG_ERR("Peripheral identity key mismatch — refusing session (possible MitM)");
+        mbedtls_platform_zeroize(&crypto_session, sizeof(crypto_session));
+        return -EACCES;
+    }
+
     encryption_active = true;
-    LOG_INF("E2E encryption established");
+    LOG_INF("E2E encryption established (peer identity verified)");
     return 0;
 }
 #else

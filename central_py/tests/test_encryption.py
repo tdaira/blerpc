@@ -338,7 +338,13 @@ def make_encrypted_client(
     notify_queue = asyncio.Queue()
     peripheral = MockEncryptedPeripheral(notify_queue, mtu=mtu)
     transport = MockEncryptedTransport(peripheral, mtu=mtu)
-    client = BlerpcClient(known_keys_path=known_keys_path)
+    # Only engage TOFU pinning when a key store is explicitly provided; the
+    # encryption-mechanics tests use a fresh peripheral key each time and must
+    # not pin against the shared per-user default store.
+    client = BlerpcClient(
+        known_keys_path=known_keys_path,
+        pin_identity=known_keys_path is not None,
+    )
     client._transport = transport
     client._splitter = ContainerSplitter(mtu=mtu)
     client._timeout_s = 5.0

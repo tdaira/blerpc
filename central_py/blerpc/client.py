@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 
 from blerpc_protocol.command import CommandPacket, CommandType
@@ -26,6 +27,15 @@ from .generated.generated_client import GeneratedClientMixin
 from .transport import SERVICE_UUID, BleTransport, ScannedDevice
 
 logger = logging.getLogger(__name__)
+
+# Default per-user store for TOFU-pinned peripheral identity keys. Identity
+# pinning is enabled by default; without it the E2E encryption offers no
+# protection against an active man-in-the-middle.
+DEFAULT_KNOWN_KEYS_PATH = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+    "blerpc",
+    "known_keys.json",
+)
 
 
 class PayloadTooLargeError(Exception):
@@ -50,6 +60,7 @@ class BlerpcClient(GeneratedClientMixin):
         self,
         known_keys_path: str | None = None,
         require_encryption: bool = True,
+        pin_identity: bool = True,
     ):
         self._transport = BleTransport()
         self._splitter: ContainerSplitter | None = None
@@ -60,6 +71,14 @@ class BlerpcClient(GeneratedClientMixin):
 
         # Encryption state
         self._session: BlerpcCryptoSession | None = None
+        # Identity pinning (TOFU) is ON by default — it is what makes the E2E
+        # handshake MitM-resistant. With no explicit path, pin to the standard
+        # per-user store. pin_identity=False deliberately opts out (the session
+        # is then encrypted but NOT authenticated against a rogue peripheral).
+        if not pin_identity:
+            known_keys_path = None
+        elif known_keys_path is None:
+            known_keys_path = DEFAULT_KNOWN_KEYS_PATH
         self._known_keys_path = known_keys_path
         self._require_encryption = require_encryption
 

@@ -6,3 +6,14 @@ config BLERPC_ENCRYPTION
 	depends on BLERPC_PROTOCOL_CRYPTO
 	help
 	  Enable E2E encryption on the central.
+
+config BLERPC_PEER_ED25519_PUBLIC_KEY
+	string "Pinned peripheral Ed25519 public key (hex, 64 chars)"
+	default ""
+	depends on BLERPC_ENCRYPTION
+	help
+	  The expected peripheral's Ed25519 identity public key as 64 hex chars
+	  (32 bytes). The central pins this value and refuses to establish a
+	  session with any peripheral whose identity key differs — this is what
+	  makes the handshake resistant to a man-in-the-middle. Store it in a
+	  git-ignored overlay file (e.g. keys.conf), like the peripheral's key.
