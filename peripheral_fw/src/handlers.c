@@ -97,16 +97,30 @@ int handle_flash_read(const uint8_t *req_data, size_t req_len, pb_ostream_t *ost
         return -1;
     }
 
-    /* Validate flash read address bounds */
-#if defined(CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS) && CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS > 0
-    if (req.length > 0 &&
-        ((uint64_t)req.address + req.length > CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS ||
-         req.address + req.length < req.address)) {
-        LOG_ERR("FlashRead: address 0x%08x + length %u exceeds max allowed address 0x%x",
-                req.address, req.length, CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS);
+    /* Validate flash read address bounds (FAIL CLOSED).
+     *
+     * flash_read can return the contents of any flash address, so it is gated
+     * behind an explicit, bounded read window [MIN, MAX) configured via Kconfig.
+     * When MAX is 0 (the default) every request is rejected; configure the
+     * window to cover only the data region you intend to expose. */
+    if (CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS == 0) {
+        LOG_ERR("FlashRead disabled: no read window configured "
+                "(set CONFIG_BLERPC_MIN/MAX_FLASH_READ_ADDRESS)");
         return -1;
     }
-#endif
+    if (req.length > 0) {
+        uint64_t end = (uint64_t)req.address + req.length;
+        if (req.address < (uint32_t)CONFIG_BLERPC_MIN_FLASH_READ_ADDRESS ||
+            end > (uint64_t)CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS) {
+            LOG_ERR("FlashRead: range [0x%08x, 0x%llx) outside allowed window "
+                    "[0x%x, 0x%x)",
+                    req.address, (unsigned long long)end,
+                    (unsigned int)CONFIG_BLERPC_MIN_FLASH_READ_ADDRESS,
+                    (unsigned int)CONFIG_BLERPC_MAX_FLASH_READ_ADDRESS);
+            return -1;
+        }
+    }
+
     struct flash_pages_info page_info;
     size_t page_count = flash_get_page_count(flash_dev);
     if (page_count > 0 && flash_get_page_info_by_idx(flash_dev, page_count - 1, &page_info) == 0) {

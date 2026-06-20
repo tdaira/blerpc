@@ -33,6 +33,15 @@ static uint8_t transaction_counter;
 static struct blerpc_crypto_session crypto_session;
 static struct blerpc_peripheral_key_exchange peripheral_kx;
 static bool encryption_active;
+static bool keys_loaded;
+
+/* Fail closed at build time: if encryption is compiled in, a non-empty Ed25519
+ * identity key MUST be provided (e.g. via keys.conf). sizeof("") == 1, so an
+ * unset key fails the build here instead of silently producing a device that
+ * advertises encryption but cannot authenticate itself. */
+BUILD_ASSERT(sizeof(CONFIG_BLERPC_ED25519_PRIVATE_KEY) > 1,
+             "CONFIG_BLERPC_ED25519_PRIVATE_KEY must be set when "
+             "CONFIG_BLERPC_ENCRYPTION=y (see peripheral_fw/keys.conf.example)");
 
 static int hex_to_bytes(const char *hex, uint8_t *out, size_t out_len)
 {
@@ -70,13 +79,25 @@ static int load_keys(void)
         return -1;
     }
 
+    /* Reject the all-zero placeholder seed (keys.conf.example). An all-zero
+     * seed produces a fixed, publicly-known identity key, which would let
+     * anyone impersonate this device. */
+    uint8_t zero_seed[32] = {0};
+    if (memcmp(ed25519_privkey, zero_seed, sizeof(zero_seed)) == 0) {
+        LOG_ERR("Ed25519 key is the all-zero placeholder — refusing to enable encryption");
+        mbedtls_platform_zeroize(ed25519_privkey, sizeof(ed25519_privkey));
+        return -1;
+    }
+
     /* Initialize peripheral key exchange (X25519 keypair generated per session) */
     if (blerpc_peripheral_kx_init(&peripheral_kx, ed25519_privkey) != 0) {
         LOG_ERR("Failed to initialize peripheral key exchange");
+        mbedtls_platform_zeroize(ed25519_privkey, sizeof(ed25519_privkey));
         return -1;
     }
 
     mbedtls_platform_zeroize(ed25519_privkey, sizeof(ed25519_privkey));
+    keys_loaded = true;
     LOG_INF("Encryption keys loaded");
     return 0;
 }
@@ -433,7 +454,11 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             uint16_t max_resp = CONFIG_BLERPC_MAX_RESPONSE_PAYLOAD_SIZE;
             uint16_t flags = 0;
 #ifdef CONFIG_BLERPC_ENCRYPTION
-            flags |= CAPABILITY_FLAG_ENCRYPTION_SUPPORTED;
+            /* Only advertise encryption support if a valid identity key actually
+             * loaded — never claim a capability we cannot honour (fail closed). */
+            if (keys_loaded) {
+                flags |= CAPABILITY_FLAG_ENCRYPTION_SUPPORTED;
+            }
 #endif
             caps_payload[0] = (uint8_t)(max_req & 0xFF);
             caps_payload[1] = (uint8_t)(max_req >> 8);
@@ -448,6 +473,12 @@ static ssize_t on_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
             }
 #ifdef CONFIG_BLERPC_ENCRYPTION
         } else if (hdr.control_cmd == CONTROL_CMD_KEY_EXCHANGE) {
+            /* Fail closed: never run key exchange without a valid identity key
+             * (otherwise the peripheral would sign with an uninitialized key). */
+            if (!keys_loaded) {
+                LOG_WRN("Key exchange rejected: encryption keys not loaded");
+                return len;
+            }
             /* Block KX re-initiation when encryption is already active */
             if (encryption_active) {
                 LOG_WRN("Key exchange rejected: encryption already active");

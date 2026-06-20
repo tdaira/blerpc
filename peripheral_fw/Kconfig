@@ -24,14 +24,25 @@ config BLERPC_WORK_STACK_SIZE
 	help
 	  Stack size for the blerpc request processing work queue.
 
+config BLERPC_MIN_FLASH_READ_ADDRESS
+	int "Minimum allowed flash read address"
+	default 0
+	help
+	  Minimum address (inclusive) allowed for BLE flash_read requests.
+	  Together with BLERPC_MAX_FLASH_READ_ADDRESS this bounds the flash
+	  window flash_read may return. Set it to the start of the data region
+	  you intend to expose.
+
 config BLERPC_MAX_FLASH_READ_ADDRESS
 	int "Maximum allowed flash read address"
 	default 0
 	help
 	  Maximum address (exclusive) allowed for BLE flash_read requests.
-	  Set to 0 to allow reading up to the end of flash (limited by
-	  hardware flash size). Set to a specific address to restrict
-	  reads to a safe region (e.g. application data area only).
+	  flash_read is FAIL-CLOSED: when this is 0 (the default) every
+	  flash_read request is rejected. To enable bounded reads, set this to
+	  the end of the data region you intend to expose and set
+	  BLERPC_MIN_FLASH_READ_ADDRESS to its start. Restrict the window to
+	  data you are willing to expose.
 
 config BLERPC_DOUBLE_BUFFER
 	bool "Double-buffer request work queue"
