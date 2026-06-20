@@ -285,8 +285,9 @@ class _HomePageState extends State<HomePage> {
                   icon: Icon(
                     _showCopied ? Icons.check : Icons.copy,
                     size: 16,
-                    color:
-                        _logs.isEmpty ? BleColors.textSecondary : BleColors.accent,
+                    color: _logs.isEmpty
+                        ? BleColors.textSecondary
+                        : BleColors.accent,
                   ),
                   label: Text(
                     _showCopied ? 'Copied!' : 'Copy Logs',
