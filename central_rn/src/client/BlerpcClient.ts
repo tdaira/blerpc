@@ -17,7 +17,7 @@ import {
 } from '@blerpc/protocol-rn';
 import { BleTransport, ScannedDevice } from '../ble/BleTransport';
 import { GeneratedClient } from './GeneratedClient';
-import { KnownKeys, loadKnownKeys, saveKnownKeys, checkOrStore } from './knownKeys';
+import { AsyncStorageKnownKeyStore } from './knownKeys';
 
 export class PayloadTooLargeError extends Error {
   constructor(
@@ -59,11 +59,11 @@ export class BlerpcClient extends GeneratedClient {
   private _session: BlerpcCryptoSession | null = null;
 
   // TOFU identity pinning (on by default). Without it the E2E session is
-  // encrypted but not authenticated against a rogue peripheral. The known-keys
-  // map is loaded before the key exchange so the verify callback can be sync.
+  // encrypted but not authenticated against a rogue peripheral. The store is
+  // loaded before the key exchange so the library can read it synchronously.
   private readonly pinIdentity: boolean;
   private _peerAddress: string | null = null;
-  private _knownKeys: KnownKeys = {};
+  private _knownKeys: AsyncStorageKnownKeyStore | null = null;
 
   constructor(requireEncryption = true, pinIdentity = true) {
     super();
@@ -101,7 +101,7 @@ export class BlerpcClient extends GeneratedClient {
   async connect(device: ScannedDevice): Promise<void> {
     this._peerAddress = device.address;
     if (this.pinIdentity) {
-      this._knownKeys = await loadKnownKeys();
+      this._knownKeys = await AsyncStorageKnownKeyStore.load();
     }
     await this.transport.connect(device);
     this._splitter = new ContainerSplitter(this.transport.mtu);
@@ -182,13 +182,9 @@ export class BlerpcClient extends GeneratedClient {
   private async _performKeyExchange(): Promise<void> {
     const s = this._splitter!;
 
-    // TOFU identity pinning: verify the peripheral's Ed25519 identity key
-    // against the pinned one (stored on first use, rejected on mismatch).
-    const address = this._peerAddress;
-    const verifyKeyCb =
-      this.pinIdentity && address !== null
-        ? (pub: Uint8Array) => checkOrStore(this._knownKeys, address, pub)
-        : undefined;
+    // TOFU identity pinning is owned by the protocol library: it pins the
+    // peripheral's Ed25519 identity on first use and rejects a changed key.
+    const knownKeys = this._knownKeys;
 
     try {
       this._session = await centralPerformKeyExchange({
@@ -208,11 +204,12 @@ export class BlerpcClient extends GeneratedClient {
           }
           return resp.payload;
         },
-        verifyKeyCb,
+        knownKeys: knownKeys ?? undefined,
+        deviceId: this._peerAddress ?? undefined,
+        pinIdentity: this.pinIdentity,
       });
-      if (verifyKeyCb) {
-        await saveKnownKeys(this._knownKeys);
-      }
+      // Flush any newly pinned key to disk (TOFU survives restarts).
+      await knownKeys?.persist();
       console.log('E2E encryption established');
     } catch (e) {
       console.log('Key exchange failed:', e);

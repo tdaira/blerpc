@@ -16,6 +16,7 @@ import com.blerpc.protocol.ContainerAssembler
 import com.blerpc.protocol.ContainerSplitter
 import com.blerpc.protocol.ContainerType
 import com.blerpc.protocol.ControlCmd
+import com.blerpc.protocol.KnownKeyStore
 import com.blerpc.protocol.centralPerformKeyExchange
 import com.blerpc.protocol.makeCapabilitiesRequest
 import com.blerpc.protocol.makeKeyExchange
@@ -45,7 +46,7 @@ class BlerpcClient(
     constructor(
         context: Context,
         requireEncryption: Boolean = true,
-    ) : this(BleTransport(context) as Transport, requireEncryption, KnownKeyStore(context))
+    ) : this(BleTransport(context) as Transport, requireEncryption, SharedPrefsKnownKeyStore(context))
 
     private var splitter: ContainerSplitter? = null
     private val assembler = ContainerAssembler()
@@ -156,16 +157,9 @@ class BlerpcClient(
     private suspend fun performKeyExchange() {
         val s = splitter ?: throw IllegalStateException("Not connected")
 
-        // TOFU identity pinning (on by default): verify the peripheral's Ed25519
-        // identity key against the pinned one. Without this the E2E session is
-        // encrypted but not authenticated against a rogue peripheral.
-        val verifyKeyCb: ((ByteArray) -> Boolean)? =
-            if (pinIdentity && knownKeys != null) {
-                { pub -> knownKeys.checkOrStore(peerAddress ?: "", pub) }
-            } else {
-                null
-            }
-
+        // TOFU identity pinning (on by default): the protocol library pins the
+        // peripheral's Ed25519 identity on first use and rejects a changed key.
+        // Without it the E2E session is encrypted but not authenticated.
         try {
             session =
                 centralPerformKeyExchange(
@@ -184,7 +178,9 @@ class BlerpcClient(
                         }
                         resp.payload
                     },
-                    verifyKeyCb = verifyKeyCb,
+                    knownKeys = knownKeys,
+                    deviceId = peerAddress,
+                    pinIdentity = pinIdentity,
                 )
             Log.i(TAG, "E2E encryption established")
         } catch (e: Exception) {

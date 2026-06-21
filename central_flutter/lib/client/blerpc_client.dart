@@ -55,8 +55,8 @@ class BlerpcClient with GeneratedClientMixin {
   // Encryption state
   BlerpcCryptoSession? _session;
 
-  // TOFU state, loaded before the key exchange so the verify callback is sync.
-  KnownKeyStore? _knownKeys;
+  // TOFU state, loaded before the key exchange (the library reads it sync).
+  SharedPrefsKnownKeyStore? _knownKeys;
   String? _peerAddress;
 
   BlerpcClient({this.requireEncryption = true, this.pinIdentity = true});
@@ -90,7 +90,7 @@ class BlerpcClient with GeneratedClientMixin {
   Future<void> connect(ScannedDevice device) async {
     _peerAddress = device.address;
     if (pinIdentity) {
-      _knownKeys = await KnownKeyStore.load();
+      _knownKeys = await SharedPrefsKnownKeyStore.load();
     }
     await transport.connect(device);
     _splitter = ContainerSplitter(mtu: transport.mtu);
@@ -161,14 +161,9 @@ class BlerpcClient with GeneratedClientMixin {
   Future<void> _performKeyExchange() async {
     final s = _splitter!;
 
-    // TOFU identity pinning: verify the peripheral's Ed25519 identity key
-    // against the pinned one (stored on first use, rejected on mismatch).
+    // TOFU identity pinning is owned by the protocol library: it pins the
+    // peripheral's Ed25519 identity on first use and rejects a changed key.
     final knownKeys = _knownKeys;
-    final address = _peerAddress;
-    final bool Function(Uint8List)? verifyKeyCb =
-        (pinIdentity && knownKeys != null && address != null)
-            ? (pub) => knownKeys.checkOrStore(address, pub)
-            : null;
 
     try {
       _session = await centralPerformKeyExchange(
@@ -188,7 +183,9 @@ class BlerpcClient with GeneratedClientMixin {
           }
           return resp.payload;
         },
-        verifyKeyCb: verifyKeyCb,
+        knownKeys: knownKeys,
+        deviceId: _peerAddress,
+        pinIdentity: pinIdentity,
       );
       // Flush any newly pinned key to disk (TOFU survives restarts).
       await knownKeys?.persist();

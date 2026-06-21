@@ -1,58 +1,53 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { KnownKeyStore } from '@blerpc/protocol-rn';
 
 // TOFU (Trust On First Use) store for peripheral Ed25519 identity keys.
 //
-// The E2E handshake signature binds only the ephemeral X25519 keys, not the
-// peripheral's long-term identity key, so MitM resistance depends on the
-// central pinning that identity: on first connection the key is stored; on
-// later connections a changed key is rejected.
-//
-// Backed by AsyncStorage (per-app, survives restarts). Because the verify
-// callback is synchronous, the map is loaded before the key exchange and
-// persisted after it.
+// The pinning policy (trust on first use, reject a changed key) lives in the
+// protocol library (`tofuVerify`); this class only provides per-app persistence.
+// Backed by AsyncStorage (survives restarts). Because the library reads the
+// store synchronously during the key exchange, the map is loaded before the
+// exchange and persisted after it.
 
 const STORE_KEY = 'blerpc_known_keys';
 
-export type KnownKeys = Record<string, string>;
+export class AsyncStorageKnownKeyStore implements KnownKeyStore {
+  private keys: Record<string, string>;
+  private dirty = false;
 
-export async function loadKnownKeys(): Promise<KnownKeys> {
-  try {
-    const raw = await AsyncStorage.getItem(STORE_KEY);
-    return raw ? (JSON.parse(raw) as KnownKeys) : {};
-  } catch {
-    return {};
+  private constructor(keys: Record<string, string>) {
+    this.keys = keys;
   }
-}
 
-export async function saveKnownKeys(known: KnownKeys): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(known));
-  } catch {
-    // Best-effort persistence; pinning still holds for the current session.
+  /** Load the store. Call before the key exchange. */
+  static async load(): Promise<AsyncStorageKnownKeyStore> {
+    let keys: Record<string, string> = {};
+    try {
+      const raw = await AsyncStorage.getItem(STORE_KEY);
+      if (raw) keys = JSON.parse(raw) as Record<string, string>;
+    } catch {
+      // Best-effort load; an empty store just means everything is first-use.
+    }
+    return new AsyncStorageKnownKeyStore(keys);
   }
-}
 
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/**
- * First use → store the key in `known` and trust it. Subsequent connections →
- * trust only if the key matches; returns false on a TOFU violation (the
- * peripheral presented a different identity than the pinned one).
- */
-export function checkOrStore(
-  known: KnownKeys,
-  address: string,
-  ed25519Pubkey: Uint8Array,
-): boolean {
-  const hex = toHex(ed25519Pubkey);
-  const stored = known[address];
-  if (stored === undefined) {
-    known[address] = hex;
-    return true;
+  get(deviceId: string): string | null {
+    return this.keys[deviceId] ?? null;
   }
-  return stored === hex;
+
+  put(deviceId: string, hexEd25519Pubkey: string): void {
+    this.keys[deviceId] = hexEd25519Pubkey;
+    this.dirty = true;
+  }
+
+  /** Flush newly pinned keys to disk. Call after a successful key exchange. */
+  async persist(): Promise<void> {
+    if (!this.dirty) return;
+    try {
+      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(this.keys));
+      this.dirty = false;
+    } catch {
+      // Best-effort persistence; pinning still holds for the current session.
+    }
+  }
 }
