@@ -14,7 +14,6 @@ import time
 
 from blerpc_protocol.command import CommandPacket, CommandType
 from blerpc_protocol.container import (
-    BLERPC_ERROR_BUSY,
     BLERPC_ERROR_RESPONSE_TOO_LARGE,
     CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
     Container,
@@ -290,8 +289,11 @@ class BlerpcPeripheral:
             try:
                 payload = session.decrypt(payload)
             except RuntimeError as e:
+                # Match the firmware (ble_service.c): a decryption/replay
+                # failure is dropped silently. Sending BUSY would tell the
+                # central to retry, but an identical ciphertext fails
+                # decryption identically every time, so a retry never succeeds.
                 logger.error("Decryption/replay error: %s", e)
-                self._send_error(transaction_id, BLERPC_ERROR_BUSY)
                 return
         elif self._encryption_supported:
             # Reject unencrypted data when encryption is supported
