@@ -6,6 +6,7 @@ import 'package:blerpc_protocol/blerpc_protocol.dart';
 
 import '../ble/ble_transport.dart';
 import 'generated_client.dart';
+import 'known_keys.dart';
 
 class PayloadTooLargeError implements Exception {
   final int actual;
@@ -42,6 +43,10 @@ class BlerpcClient with GeneratedClientMixin {
   final BleTransport transport = BleTransport();
   final bool requireEncryption;
 
+  // TOFU identity pinning (on by default). Without it the E2E session is
+  // encrypted but not authenticated against a rogue peripheral.
+  final bool pinIdentity;
+
   ContainerSplitter? _splitter;
   final _assembler = ContainerAssembler();
   Duration _timeout = const Duration(milliseconds: 100);
@@ -50,7 +55,11 @@ class BlerpcClient with GeneratedClientMixin {
   // Encryption state
   BlerpcCryptoSession? _session;
 
-  BlerpcClient({this.requireEncryption = true});
+  // TOFU state, loaded before the key exchange (the library reads it sync).
+  SharedPrefsKnownKeyStore? _knownKeys;
+  String? _peerAddress;
+
+  BlerpcClient({this.requireEncryption = true, this.pinIdentity = true});
 
   int get mtu => transport.mtu;
   bool get isEncrypted => _session != null;
@@ -79,6 +88,10 @@ class BlerpcClient with GeneratedClientMixin {
   }
 
   Future<void> connect(ScannedDevice device) async {
+    _peerAddress = device.address;
+    if (pinIdentity) {
+      _knownKeys = await SharedPrefsKnownKeyStore.load();
+    }
     await transport.connect(device);
     _splitter = ContainerSplitter(mtu: transport.mtu);
 
@@ -148,6 +161,10 @@ class BlerpcClient with GeneratedClientMixin {
   Future<void> _performKeyExchange() async {
     final s = _splitter!;
 
+    // TOFU identity pinning is owned by the protocol library: it pins the
+    // peripheral's Ed25519 identity on first use and rejects a changed key.
+    final knownKeys = _knownKeys;
+
     try {
       _session = await centralPerformKeyExchange(
         send: (payload) async {
@@ -166,7 +183,12 @@ class BlerpcClient with GeneratedClientMixin {
           }
           return resp.payload;
         },
+        knownKeys: knownKeys,
+        deviceId: _peerAddress,
+        pinIdentity: pinIdentity,
       );
+      // Flush any newly pinned key to disk (TOFU survives restarts).
+      await knownKeys?.persist();
       dev.log('E2E encryption established');
     } catch (e) {
       dev.log('Key exchange failed: $e');

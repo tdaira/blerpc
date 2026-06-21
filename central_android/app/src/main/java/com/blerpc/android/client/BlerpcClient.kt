@@ -16,6 +16,7 @@ import com.blerpc.protocol.ContainerAssembler
 import com.blerpc.protocol.ContainerSplitter
 import com.blerpc.protocol.ContainerType
 import com.blerpc.protocol.ControlCmd
+import com.blerpc.protocol.KnownKeyStore
 import com.blerpc.protocol.centralPerformKeyExchange
 import com.blerpc.protocol.makeCapabilitiesRequest
 import com.blerpc.protocol.makeKeyExchange
@@ -39,11 +40,13 @@ class ProtocolException(message: String) : Exception(message)
 class BlerpcClient(
     val transport: Transport,
     private val requireEncryption: Boolean = true,
+    private val knownKeys: KnownKeyStore? = null,
+    private val pinIdentity: Boolean = true,
 ) : GeneratedClient() {
     constructor(
         context: Context,
         requireEncryption: Boolean = true,
-    ) : this(BleTransport(context) as Transport, requireEncryption)
+    ) : this(BleTransport(context) as Transport, requireEncryption, SharedPrefsKnownKeyStore(context))
 
     private var splitter: ContainerSplitter? = null
     private val assembler = ContainerAssembler()
@@ -53,6 +56,9 @@ class BlerpcClient(
 
     // Encryption state
     private var session: BlerpcCryptoSession? = null
+
+    // Address of the peripheral being connected to, used as the TOFU pin key.
+    private var peerAddress: String? = null
 
     val mtu: Int get() = transport.mtu
     val isEncrypted: Boolean get() = session != null
@@ -69,6 +75,7 @@ class BlerpcClient(
     }
 
     suspend fun connect(device: ScannedDevice) {
+        peerAddress = device.address
         (transport as BleTransport).connect(device)
         splitter = ContainerSplitter(mtu = transport.mtu)
 
@@ -150,6 +157,9 @@ class BlerpcClient(
     private suspend fun performKeyExchange() {
         val s = splitter ?: throw IllegalStateException("Not connected")
 
+        // TOFU identity pinning (on by default): the protocol library pins the
+        // peripheral's Ed25519 identity on first use and rejects a changed key.
+        // Without it the E2E session is encrypted but not authenticated.
         try {
             session =
                 centralPerformKeyExchange(
@@ -168,6 +178,9 @@ class BlerpcClient(
                         }
                         resp.payload
                     },
+                    knownKeys = knownKeys,
+                    deviceId = peerAddress,
+                    pinIdentity = pinIdentity,
                 )
             Log.i(TAG, "E2E encryption established")
         } catch (e: Exception) {

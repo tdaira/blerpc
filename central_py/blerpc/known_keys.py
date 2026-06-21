@@ -1,4 +1,9 @@
-"""TOFU (Trust On First Use) key management for blerpc E2E encryption."""
+"""File-backed TOFU KnownKeyStore for blerpc E2E identity pinning.
+
+The TOFU policy (pin on first use, reject a changed key) now lives in the
+``blerpc_protocol`` library (``tofu_verify`` + ``KnownKeyStore``); this module
+only provides the platform persistence — a JSON file — as a ``KnownKeyStore``.
+"""
 
 from __future__ import annotations
 
@@ -9,38 +14,20 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def check_or_store_key(
-    known_keys_path: str, device_address: str, ed25519_pubkey: bytes
-) -> bool:
-    """Check a peripheral's Ed25519 public key against known keys.
+class FileKnownKeyStore:
+    """A ``blerpc_protocol.KnownKeyStore`` backed by a JSON file (per-user)."""
 
-    On first use, stores the key. On subsequent connections, verifies it matches.
+    def __init__(self, path: str) -> None:
+        self._path = path
 
-    Returns True if the key is trusted (first use or matches stored key).
-    Returns False if the key has changed (TOFU violation).
-    """
-    pubkey_hex = ed25519_pubkey.hex()
-    known = _load_known_keys(known_keys_path)
+    def get(self, device_id: str) -> str | None:
+        return _load_known_keys(self._path).get(device_id)
 
-    if device_address in known:
-        stored_hex = known[device_address]
-        if stored_hex == pubkey_hex:
-            logger.info("Known key verified for %s", device_address)
-            return True
-        else:
-            logger.error(
-                "KEY CHANGED for %s! Stored: %s, Received: %s",
-                device_address,
-                stored_hex[:16] + "...",
-                pubkey_hex[:16] + "...",
-            )
-            return False
-    else:
-        # First use — store the key
-        known[device_address] = pubkey_hex
-        _save_known_keys(known_keys_path, known)
-        logger.info("Stored new key for %s (TOFU)", device_address)
-        return True
+    def put(self, device_id: str, hex_ed25519_pubkey: str) -> None:
+        known = _load_known_keys(self._path)
+        known[device_id] = hex_ed25519_pubkey
+        _save_known_keys(self._path, known)
+        logger.info("Stored key for %s (TOFU)", device_id)
 
 
 def _load_known_keys(path: str) -> dict[str, str]:

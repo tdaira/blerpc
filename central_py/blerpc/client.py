@@ -214,18 +214,24 @@ class BlerpcClient(GeneratedClientMixin):
                 raise ValueError("Expected KEY_EXCHANGE response, got something else")
             return resp.payload
 
-        verify_cb = None
+        # Identity pinning (TOFU) is owned by the protocol library: provide a
+        # file-backed KnownKeyStore + the peripheral's address, and the library
+        # pins on first use and rejects a changed key (fail-closed by default).
+        known_keys = None
+        device_id = None
         if self._known_keys_path:
-            from .known_keys import check_or_store_key
+            from .known_keys import FileKnownKeyStore
 
-            def verify_cb(ed25519_pub: bytes) -> bool:
-                return check_or_store_key(
-                    self._known_keys_path, self._transport.address, ed25519_pub
-                )
+            known_keys = FileKnownKeyStore(self._known_keys_path)
+            device_id = self._transport.address
 
         try:
             self._session = await central_perform_key_exchange(
-                send, receive, verify_key_cb=verify_cb
+                send,
+                receive,
+                known_keys=known_keys,
+                device_id=device_id,
+                pin_identity=self._known_keys_path is not None,
             )
         except ValueError as e:
             logger.error("Key exchange failed: %s", e)

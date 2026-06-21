@@ -8,3 +8,7 @@ includeBuild('../node_modules/@react-native/gradle-plugin')
 // Manual include for @react-native-clipboard/clipboard (not picked up by autolinkLibrariesFromCommand)
 include ':react-native-clipboard_clipboard'
 project(':react-native-clipboard_clipboard').projectDir = new File(rootProject.projectDir, '../node_modules/@react-native-clipboard/clipboard/android')
+
+// Manual include for @react-native-async-storage/async-storage (not picked up by autolinkLibrariesFromCommand)
+include ':react-native-async-storage_async-storage'
+project(':react-native-async-storage_async-storage').projectDir = new File(rootProject.projectDir, '../node_modules/@react-native-async-storage/async-storage/android')
