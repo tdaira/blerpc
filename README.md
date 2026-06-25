@@ -12,9 +12,19 @@ Type-safe, high-performance, secure RPC over Bluetooth Low Energy.
 bleRPC generates client and handler code from `.proto` files for multiple platforms, enabling type-safe RPC calls over BLE GATT with automatic MTU-aware fragmentation and reassembly.
 
 - Define services once in Protocol Buffers, generate code for each platform
-- ~30 KB/s throughput over BLE
+- Up to ~59 KB/s throughput over BLE (Android 59.0, iOS 32.1, Python 30.3 KB/s)
 - Runs on devices with as little as 32 KB RAM
 - Optional E2E encryption (X25519 + Ed25519 + AES-128-GCM)
+
+## Architecture
+
+bleRPC implements a three-layer protocol stack:
+
+1. **Command Layer** — Wraps Protocol Buffer payloads with metadata
+2. **Encryption Layer** — Optional AES-128-GCM encryption following a 4-step key exchange
+3. **Container Layer** — Fragments data into MTU-sized containers for BLE transmission
+
+Communication occurs through a single GATT characteristic using Write Without Response and Notify operations.
 
 ## Supported Platforms
 
