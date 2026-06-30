@@ -61,12 +61,16 @@ flutter test
 
 ### Code Generation
 
-When modifying `proto/blerpc.proto`, regenerate handlers:
+When modifying `proto/blerpc.proto`, regenerate the handler and client code:
 
 ```bash
 cd tools/generate-handlers
 go run . -root ../..
 ```
+
+The nanopb message code (`*.pb.c/.h`) used by the C firmware is generated
+automatically at build time from `proto/blerpc.proto` and
+`proto/blerpc.options`, so there is no separate step to regenerate it.
 
 ## Code Style
 
