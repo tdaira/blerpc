@@ -1,1 +1,0 @@
-../../peripheral_fw/src/blerpc.pb.c
