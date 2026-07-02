@@ -612,6 +612,13 @@ static int hex_to_bytes(const char *hex, uint8_t *out, size_t out_len)
     return 0;
 }
 
+static bool verify_peer_identity_cb(const uint8_t ed25519_pubkey[BLERPC_ED25519_PUBKEY_SIZE],
+                                    void *ctx)
+{
+    const uint8_t *expected_id = (const uint8_t *)ctx;
+    return memcmp(ed25519_pubkey, expected_id, BLERPC_ED25519_PUBKEY_SIZE) == 0;
+}
+
 int ble_central_perform_key_exchange(void)
 {
     /* PSA Crypto must be initialized before any PSA operations */
@@ -629,20 +636,15 @@ int ble_central_perform_key_exchange(void)
         return -EINVAL;
     }
 
-    /* Retrieve the peripheral's advertised identity key during the handshake */
-    uint8_t periph_id[BLERPC_ED25519_PUBKEY_SIZE];
+    /* Fail-closed identity pinning: the signed handshake alone does not bind the
+     * identity key, so the library verifies the peripheral's Ed25519 identity
+     * against the configured peer mid-handshake and aborts on mismatch (possible
+     * MitM) before any session is established. */
     int rc = blerpc_central_perform_key_exchange(kx_send_cb, kx_recv_cb, NULL, &crypto_session,
-                                                 periph_id);
+                                                 verify_peer_identity_cb, expected_id,
+                                                 /*pin_identity=*/true, NULL);
     if (rc != 0) {
-        LOG_ERR("Key exchange failed: %d", rc);
-        return -EACCES;
-    }
-
-    /* Pin the identity: the signed handshake alone does not bind the identity
-     * key, so reject any peripheral that is not the configured peer (MitM). */
-    if (memcmp(periph_id, expected_id, sizeof(expected_id)) != 0) {
-        LOG_ERR("Peripheral identity key mismatch — refusing session (possible MitM)");
-        mbedtls_platform_zeroize(&crypto_session, sizeof(crypto_session));
+        LOG_ERR("Key exchange failed or peer identity rejected: %d", rc);
         return -EACCES;
     }
 

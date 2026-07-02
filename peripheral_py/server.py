@@ -48,6 +48,10 @@ CHAR_UUID = "12340002-0000-1000-8000-00805f9b34fb"
 TIMEOUT_MS = 100
 MTU = 247
 MAX_RESPONSE_PAYLOAD_SIZE = 65535
+# Upper bound for a single flash_read, matching the proto contract ("max 8192
+# bytes per read"). Enforced before allocating so a hostile length (a uint32,
+# up to ~4 GiB) cannot exhaust memory.
+MAX_FLASH_READ_LENGTH = 8192
 NOTIFY_MAX_RETRIES = 50
 NOTIFY_RETRY_DELAY_S = 0.005
 
@@ -67,6 +71,10 @@ def handle_flash_read(req_data: bytes) -> bytes:
     req = blerpc_pb2.FlashReadRequest()
     req.ParseFromString(req_data)
     logger.info("FlashRead: addr=0x%08x len=%d", req.address, req.length)
+    if req.length > MAX_FLASH_READ_LENGTH:
+        raise ValueError(
+            f"flash_read length {req.length} exceeds max {MAX_FLASH_READ_LENGTH}"
+        )
     data = os.urandom(req.length)
     resp = blerpc_pb2.FlashReadResponse(address=req.address, data=data)
     return resp.SerializeToString()
@@ -165,7 +173,15 @@ class BlerpcPeripheral:
     ):
         data = bytes(value)
         logger.debug("Write received: %d bytes", len(data))
+        # A hostile or buggy peer must not be able to crash the GATT write
+        # callback with a malformed packet (e.g. a truncated or out-of-range
+        # container header). Drop and continue on any parsing/handling error.
+        try:
+            self._dispatch_write(data)
+        except Exception:
+            logger.exception("Error handling inbound write; dropping packet")
 
+    def _dispatch_write(self, data: bytes):
         # Detect new connection by tracking connection state.
         # bless doesn't provide disconnect callbacks, so we detect new
         # connections by watching for a CAPABILITIES request (always the first
