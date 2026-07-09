@@ -65,6 +65,11 @@
       <button id="echo" disabled>echo</button>
     </div>
 
+    <div class="row">
+      <button id="bench" disabled>Run benchmarks</button>
+      <span class="muted">throughput + latency (same suite as the mobile app)</span>
+    </div>
+
     <div id="log"></div>
 
     <script src="./dist/blerpc-web.js"></script>
@@ -76,6 +81,7 @@
       const disconnectBtn = document.getElementById('disconnect');
       const echoBtn = document.getElementById('echo');
       const echoMsg = document.getElementById('echo-msg');
+      const benchBtn = document.getElementById('bench');
 
       function log(...args) {
         logEl.textContent += args.join(' ') + '\n';
@@ -99,6 +105,7 @@
           connectBtn.disabled = true;
           disconnectBtn.disabled = false;
           echoBtn.disabled = false;
+          benchBtn.disabled = false;
         } catch (e) {
           statusEl.textContent = 'error';
           log('connect error:', e.message || String(e));
@@ -121,6 +128,91 @@
         connectBtn.disabled = false;
         disconnectBtn.disabled = true;
         echoBtn.disabled = true;
+        benchBtn.disabled = true;
+      });
+
+      // Throughput + latency benchmarks — the same suite as the mobile app
+      // (central_rn TestRunner). Runs against the connected peripheral.
+      async function runBenchmarks() {
+        log('');
+        log('=== Throughput Benchmarks ===');
+
+        // flash_read throughput (8 KB x 10)
+        {
+          const readSize = 8192, count = 10, totalBytes = readSize * count;
+          await client.flashRead({ address: 0, length: readSize }); // warmup
+          const start = performance.now();
+          for (let i = 0; i < count; i++) {
+            const resp = await client.flashRead({ address: 0, length: readSize });
+            if (resp.data.length !== readSize) log('  ! flash_read size mismatch');
+          }
+          const ms = performance.now() - start;
+          const kbps = totalBytes / 1024 / (ms / 1000);
+          log(`[BENCH] flash_read_throughput: ${kbps.toFixed(1)} KB/s (${totalBytes} bytes in ${ms.toFixed(0)}ms, ${(ms / count).toFixed(1)} ms/call)`);
+        }
+
+        // flash_read overhead (1 byte x 20)
+        {
+          const count = 20;
+          await client.flashRead({ address: 0, length: 1 });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.flashRead({ address: 0, length: 1 });
+          const ms = performance.now() - start;
+          log(`[BENCH] flash_read_overhead: ${(ms / count).toFixed(1)} ms/call (1 byte x ${count} in ${ms.toFixed(0)}ms)`);
+        }
+
+        // echo roundtrip (x50)
+        {
+          const count = 50;
+          await client.echo({ message: 'x' });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.echo({ message: 'hello' });
+          const ms = performance.now() - start;
+          log(`[BENCH] echo_roundtrip: ${(ms / count).toFixed(1)} ms/call (${count} calls in ${ms.toFixed(0)}ms)`);
+        }
+
+        // data_write throughput (200 B x 20)
+        {
+          const writeSize = 200, count = 20, totalBytes = writeSize * count;
+          const testData = new Uint8Array(writeSize);
+          for (let i = 0; i < writeSize; i++) testData[i] = i % 256;
+          await client.dataWrite({ data: testData });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.dataWrite({ data: testData });
+          const ms = performance.now() - start;
+          const kbps = totalBytes / 1024 / (ms / 1000);
+          log(`[BENCH] data_write_throughput: ${kbps.toFixed(1)} KB/s (${totalBytes} bytes in ${ms.toFixed(0)}ms, ${(ms / count).toFixed(1)} ms/call)`);
+        }
+
+        // streaming (P->C and C->P), 20 items each
+        {
+          const count = 20;
+          const start1 = performance.now();
+          const results = await client.counterStream({ count });
+          const e1 = performance.now() - start1;
+          if (results.length !== count) log('  ! stream count mismatch');
+          log(`[BENCH] counter_stream (P->C): ${count} items in ${e1.toFixed(0)}ms (${(e1 / count).toFixed(1)} ms/item)`);
+
+          const messages = Array.from({ length: count }, (_, i) => ({ seq: i, value: i * 10 }));
+          const start2 = performance.now();
+          const resp = await client.counterUpload(messages);
+          const e2 = performance.now() - start2;
+          if (resp.receivedCount !== count) log('  ! upload count mismatch');
+          log(`[BENCH] counter_upload (C->P): ${count} items in ${e2.toFixed(0)}ms (${(e2 / count).toFixed(1)} ms/item)`);
+        }
+
+        log('=== Benchmarks complete ===');
+      }
+
+      benchBtn.addEventListener('click', async () => {
+        benchBtn.disabled = true;
+        try {
+          await runBenchmarks();
+        } catch (e) {
+          log('benchmark error:', e.message || String(e));
+        } finally {
+          if (client) benchBtn.disabled = false;
+        }
       });
 
       if (!navigator.bluetooth) {
