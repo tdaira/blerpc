@@ -37,6 +37,7 @@ Communication occurs through a single GATT characteristic using Write Without Re
 | Android | Kotlin |
 | iOS / Android | Dart (Flutter) |
 | iOS / Android | TypeScript (React Native) |
+| Browser | TypeScript (Web Bluetooth) |
 | nRF54L15 DK | C (Zephyr) |
 
 ### Peripheral (Server)
@@ -58,6 +59,7 @@ Communication occurs through a single GATT characteristic using Write Without Re
 | `central_android/` | Kotlin Central app (Android) |
 | `central_flutter/` | Dart Central app (Flutter) |
 | `central_rn/` | TypeScript Central app (React Native) |
+| `central_web/` | TypeScript Central client (browser / Web Bluetooth) |
 | `peripheral_fw/` | C Peripheral firmware (nRF54L15 DK, EFR32xG22E / Zephyr) |
 | `peripheral_py/` | Python Peripheral server (macOS) |
 | `boards/` | Custom Zephyr board definitions |

@@ -1,0 +1,34 @@
+{
+  "name": "blerpc-central-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser (Web Bluetooth) blerpc central client.",
+  "license": "Apache-2.0",
+  "author": "tdaira",
+  "type": "module",
+  "scripts": {
+    "proto": "pbjs -t static-module -w es6 -o src/proto/blerpc.js ../proto/blerpc.proto && pbts -o src/proto/blerpc.d.ts src/proto/blerpc.js",
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "lint": "eslint src/ --ignore-pattern 'src/proto/'",
+    "format": "prettier --write 'src/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts'"
+  },
+  "dependencies": {
+    "@blerpc/protocol-rn": "github:tdaira/blerpc-protocol-rn",
+    "protobufjs": "^7.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@types/web-bluetooth": "^0.0.20",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.19.0",
+    "prettier": "^3.4.2",
+    "protobufjs-cli": "^1.1.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.22.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

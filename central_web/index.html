@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>blerpc — Web Bluetooth central demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      button {
+        font-size: 1rem;
+        padding: 0.4rem 0.9rem;
+      }
+      input {
+        font-size: 1rem;
+        padding: 0.3rem;
+      }
+      #log {
+        white-space: pre-wrap;
+        background: #111;
+        color: #b6f;
+        padding: 1rem;
+        border-radius: 6px;
+        min-height: 8rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0.75rem 0;
+      }
+      .muted {
+        color: #666;
+      }
+      code {
+        background: #f3f3f3;
+        padding: 0 0.2rem;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>blerpc — Web Bluetooth central</h1>
+    <p class="muted">
+      A minimal browser central for the bleRPC example peripheral. Chrome/Edge over HTTPS or
+      localhost only. Connecting runs the timeout &amp; capabilities negotiation and, if the
+      peripheral advertises encryption, the X25519/Ed25519 key exchange (TOFU-pinned).
+    </p>
+
+    <div class="row">
+      <button id="connect">Connect</button>
+      <button id="disconnect" disabled>Disconnect</button>
+      <span id="status" class="muted">disconnected</span>
+    </div>
+
+    <div class="row">
+      <input id="echo-msg" value="hello" />
+      <button id="echo" disabled>echo</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script src="./dist/blerpc-web.js"></script>
+    <script>
+      const { BlerpcClient } = BlerpcWeb;
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+      const connectBtn = document.getElementById('connect');
+      const disconnectBtn = document.getElementById('disconnect');
+      const echoBtn = document.getElementById('echo');
+      const echoMsg = document.getElementById('echo-msg');
+
+      function log(...args) {
+        logEl.textContent += args.join(' ') + '\n';
+      }
+
+      let client = null;
+
+      connectBtn.addEventListener('click', async () => {
+        try {
+          client = new BlerpcClient();
+          statusEl.textContent = 'requesting device…';
+          const devices = await client.scan(); // opens the browser chooser
+          if (devices.length === 0) return;
+          statusEl.textContent = 'connecting…';
+          await client.connect(devices[0]);
+          statusEl.textContent = client.isEncrypted ? 'connected (encrypted)' : 'connected';
+          log(
+            `connected: encrypted=${client.isEncrypted}, mtu=${client.mtu}, ` +
+              `maxReq=${client.maxRequestPayloadSize}`,
+          );
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+          echoBtn.disabled = false;
+        } catch (e) {
+          statusEl.textContent = 'error';
+          log('connect error:', e.message || String(e));
+        }
+      });
+
+      echoBtn.addEventListener('click', async () => {
+        try {
+          const resp = await client.echo({ message: echoMsg.value });
+          log(`echo -> ${JSON.stringify(resp.message)}`);
+        } catch (e) {
+          log('echo error:', e.message || String(e));
+        }
+      });
+
+      disconnectBtn.addEventListener('click', () => {
+        client?.disconnect();
+        client = null;
+        statusEl.textContent = 'disconnected';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        echoBtn.disabled = true;
+      });
+
+      if (!navigator.bluetooth) {
+        statusEl.textContent = 'Web Bluetooth unavailable';
+        connectBtn.disabled = true;
+        log('This browser has no Web Bluetooth. Use Chrome/Edge over HTTPS or localhost.');
+      }
+    </script>
+  </body>
+</html>

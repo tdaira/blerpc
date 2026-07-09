@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - New `BLERPC_ERROR_BUSY` (0x02) error code in all protocol libraries
 
 ### Added
+- Browser (Web Bluetooth) TypeScript central client (`central_web/`) — reuses the platform-neutral `@blerpc/protocol-rn` unmodified and adds a `WebBluetoothTransport`; bundled to `dist/blerpc-web.{js,mjs}` with a minimal connect + echo demo page
 - React Native (TypeScript) central client for iOS and Android with functional tests and benchmarks
 - TypeScript protocol library (`blerpc-protocol-rn`) using @noble cryptographic libraries
 - C central client code generation (`generated_client.c/h`) with typed wrappers for all commands
