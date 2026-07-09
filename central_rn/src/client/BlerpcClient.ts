@@ -14,7 +14,7 @@ import {
   BlerpcCryptoSession,
   CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
   BLERPC_ERROR_RESPONSE_TOO_LARGE,
-} from '@blerpc/protocol-rn';
+} from '@blerpc/protocol-ts';
 import { BleTransport, ScannedDevice } from '../ble/BleTransport';
 import { GeneratedClient } from './GeneratedClient';
 import { AsyncStorageKnownKeyStore } from './knownKeys';

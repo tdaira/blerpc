@@ -15,7 +15,7 @@
     "format:check": "prettier --check 'src/**/*.ts'"
   },
   "dependencies": {
-    "@blerpc/protocol-rn": "github:tdaira/blerpc-protocol-rn",
+    "@blerpc/protocol-ts": "github:tdaira/blerpc-protocol-ts",
     "protobufjs": "^7.4.0"
   },
   "devDependencies": {

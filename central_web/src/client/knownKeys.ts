@@ -1,4 +1,4 @@
-import type { KnownKeyStore } from '@blerpc/protocol-rn';
+import type { KnownKeyStore } from '@blerpc/protocol-ts';
 
 // TOFU (Trust On First Use) store for peripheral Ed25519 identity keys.
 //

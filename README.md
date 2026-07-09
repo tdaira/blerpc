@@ -78,7 +78,7 @@ See the [Getting Started](https://blerpc.net/getting-started.html) guide.
 | Swift | [blerpc-protocol-swift](https://github.com/tdaira/blerpc-protocol-swift) |
 | Kotlin | [blerpc-protocol-kt](https://github.com/tdaira/blerpc-protocol-kt) |
 | Dart | [blerpc-protocol-dart](https://github.com/tdaira/blerpc-protocol-dart) |
-| TypeScript | [blerpc-protocol-rn](https://github.com/tdaira/blerpc-protocol-rn) |
+| TypeScript | [blerpc-protocol-ts](https://github.com/tdaira/blerpc-protocol-ts) |
 
 ## Documentation
 

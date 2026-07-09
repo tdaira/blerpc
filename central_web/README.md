@@ -1,7 +1,7 @@
 # central_web — browser (Web Bluetooth) blerpc central
 
 A bleRPC central that runs in the browser over the [Web Bluetooth API]. It reuses the
-platform-neutral protocol library [`@blerpc/protocol-rn`] (container framing, command packets,
+platform-neutral protocol library [`@blerpc/protocol-ts`] (container framing, command packets,
 and the X25519/Ed25519/AES-128-GCM encryption layer run unmodified in a browser) and adds a
 single new piece: a `WebBluetoothTransport`. The protocol logic in `BlerpcClient` is the same as
 the React Native client (`central_rn`); the transport is injected so one client drives both.
@@ -65,4 +65,4 @@ import { BlerpcClient } from './dist/blerpc-web.mjs';
   Pinned peripheral identities are stored in `localStorage` under `blerpc_known_keys`.
 
 [Web Bluetooth API]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API
-[`@blerpc/protocol-rn`]: https://github.com/tdaira/blerpc-protocol-rn
+[`@blerpc/protocol-ts`]: https://github.com/tdaira/blerpc-protocol-ts
