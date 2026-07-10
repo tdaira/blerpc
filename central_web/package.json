@@ -15,7 +15,7 @@
     "format:check": "prettier --check 'src/**/*.ts'"
   },
   "dependencies": {
-    "@blerpc/protocol-ts": "^0.8.1",
+    "@blerpc/protocol-ts": "^0.8.2",
     "protobufjs": "^7.4.0"
   },
   "devDependencies": {

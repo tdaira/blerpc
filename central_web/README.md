@@ -65,4 +65,4 @@ import { BlerpcClient } from './dist/blerpc-web.mjs';
   Pinned peripheral identities are stored in `localStorage` under `blerpc_known_keys`.
 
 [Web Bluetooth API]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API
-[`@blerpc/protocol-ts`]: https://github.com/tdaira/blerpc-protocol-ts
+[`@blerpc/protocol-ts`]: https://www.npmjs.com/package/@blerpc/protocol-ts
