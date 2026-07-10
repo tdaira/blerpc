@@ -1,0 +1,195 @@
+/* ============================================================
+   bleRPC design system — vendored tokens + console components.
+   Tokens are from the bleRPC Design System (Claude Design):
+   tokens/{colors,typography,spacing,fonts}.css. Dark is default;
+   set data-theme="light" on <html> to switch.
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap");
+
+:root {
+  /* surfaces */
+  --bg: #1a1b26;
+  --bg-secondary: #24283b;
+  --bg-code: #1e2030;
+  --nav-bg: #16161e;
+  /* text */
+  --text: #c0caf5;
+  --text-secondary: #a9b1d6;
+  /* accent */
+  --accent: #0082fc;
+  --accent-hover: #339dff;
+  /* lines / status */
+  --border: #3b4261;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --error: #f7768e;
+  --syntax-number: #ff9e64; /* Tokyo Night orange — benchmark values */
+  --text-on-accent: #ffffff;
+  /* type */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Fira Code", "SF Mono", "Cascadia Code", ui-monospace, "Menlo", monospace;
+  /* radii */
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 12px;
+}
+
+[data-theme="light"] {
+  --bg: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-code: #e8e8e8;
+  --nav-bg: #e8e8e8;
+  --text: #1a1b26;
+  --text-secondary: #4e5173;
+  --accent: #0070d6;
+  --accent-hover: #005cb8;
+  --border: #d0d0d0;
+  --shadow: rgba(0, 0, 0, 0.1);
+  --success: #4a7a1e;
+  --warning: #a07020;
+  --error: #c44040;
+  --syntax-number: #b5560f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+}
+
+/* App bar */
+.appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 20px;
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--border);
+}
+.wordmark { font-weight: 900; font-size: 1.3rem; letter-spacing: -0.5px; }
+.wordmark .ble { color: var(--accent); }
+.wordmark .sub {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-left: 8px;
+}
+
+/* Layout */
+main { max-width: 640px; margin: 0 auto; padding: 28px 24px; }
+
+/* Cards */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+}
+
+/* Key/value rows */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.kv:last-child { border-bottom: 0; }
+.kv .k { color: var(--text-secondary); }
+.kv .v { font-family: var(--font-mono); }
+.kv .v.accent { color: var(--accent); }
+
+/* Section labels */
+.label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+}
+.badge.green { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.badge.blue { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.badge.grey { color: var(--text-secondary); border-color: var(--border); }
+
+/* Status dot */
+.statusdot { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-secondary); }
+.statusdot .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-secondary); }
+.statusdot.online .dot { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent); }
+.statusdot.busy .dot { background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 22%, transparent); }
+
+/* Buttons */
+.btn {
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, box-shadow 120ms;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 4px 12px var(--shadow); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+/* Input */
+.input {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-code);
+  color: var(--text);
+}
+.input:focus { outline: none; border-color: var(--accent); }
+
+/* Console / code output */
+.console {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  min-height: 10rem;
+  max-height: 24rem;
+  overflow-y: auto;
+  color: var(--text);
+}
+.console .bench { color: var(--syntax-number, #ff9e64); }
+.console .head { color: var(--accent); }
+.console .err { color: var(--error); }
+.console .muted { color: var(--text-secondary); }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.lead { color: var(--text-secondary); font-size: 0.95rem; margin: 0 0 22px; }
+a { color: var(--accent); }
