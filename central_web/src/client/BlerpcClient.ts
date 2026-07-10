@@ -15,9 +15,9 @@ import {
   CAPABILITY_FLAG_ENCRYPTION_SUPPORTED,
   BLERPC_ERROR_RESPONSE_TOO_LARGE,
 } from '@blerpc/protocol-ts';
-import { BleTransport, ScannedDevice } from '../ble/BleTransport';
+import { WebBluetoothTransport, ScannedDevice } from '../ble/WebBluetoothTransport';
 import { GeneratedClient } from './GeneratedClient';
-import { AsyncStorageKnownKeyStore } from './knownKeys';
+import { LocalStorageKnownKeyStore } from './knownKeys';
 
 export class PayloadTooLargeError extends Error {
   constructor(
@@ -46,8 +46,14 @@ export class ProtocolException extends Error {
   }
 }
 
+/**
+ * Browser bleRPC central. Identical protocol logic to the React Native client
+ * (`central_rn`); the only change is that the transport is injected so the
+ * same client drives a Web Bluetooth transport in the browser and an ble-plx
+ * transport on native.
+ */
 export class BlerpcClient extends GeneratedClient {
-  readonly transport = new BleTransport();
+  readonly transport: WebBluetoothTransport;
   private readonly requireEncryption: boolean;
 
   private _splitter: ContainerSplitter | null = null;
@@ -63,10 +69,15 @@ export class BlerpcClient extends GeneratedClient {
   // loaded before the key exchange so the library can read it synchronously.
   private readonly pinIdentity: boolean;
   private _peerAddress: string | null = null;
-  private _knownKeys: AsyncStorageKnownKeyStore | null = null;
+  private _knownKeys: LocalStorageKnownKeyStore | null = null;
 
-  constructor(requireEncryption = true, pinIdentity = true) {
+  constructor(
+    transport: WebBluetoothTransport = new WebBluetoothTransport(),
+    requireEncryption = true,
+    pinIdentity = true,
+  ) {
     super();
+    this.transport = transport;
     this.requireEncryption = requireEncryption;
     this.pinIdentity = pinIdentity;
   }
@@ -77,6 +88,10 @@ export class BlerpcClient extends GeneratedClient {
 
   get isEncrypted(): boolean {
     return this._session !== null;
+  }
+
+  get maxRequestPayloadSize(): number | null {
+    return this._maxRequestPayloadSize;
   }
 
   private _readTimeout(firstRead: boolean): number {
@@ -101,7 +116,7 @@ export class BlerpcClient extends GeneratedClient {
   async connect(device: ScannedDevice): Promise<void> {
     this._peerAddress = device.address;
     if (this.pinIdentity) {
-      this._knownKeys = await AsyncStorageKnownKeyStore.load();
+      this._knownKeys = await LocalStorageKnownKeyStore.load();
     }
     await this.transport.connect(device);
     this._splitter = new ContainerSplitter(this.transport.mtu);
@@ -127,7 +142,7 @@ export class BlerpcClient extends GeneratedClient {
   }
 
   private async _requestTimeout(): Promise<void> {
-    const s = this._splitter!;
+    const s = this._splitter as ContainerSplitter;
     const tid = s.nextTransactionId();
     const req = makeTimeoutRequest(tid);
     await this.transport.write(req.serialize());
@@ -150,7 +165,7 @@ export class BlerpcClient extends GeneratedClient {
   }
 
   private async _requestCapabilities(): Promise<void> {
-    const s = this._splitter!;
+    const s = this._splitter as ContainerSplitter;
     const tid = s.nextTransactionId();
     const req = makeCapabilitiesRequest(tid);
     await this.transport.write(req.serialize());
@@ -180,7 +195,7 @@ export class BlerpcClient extends GeneratedClient {
   }
 
   private async _performKeyExchange(): Promise<void> {
-    const s = this._splitter!;
+    const s = this._splitter as ContainerSplitter;
 
     // TOFU identity pinning is owned by the protocol library: it pins the
     // peripheral's Ed25519 identity on first use and rejects a changed key.
@@ -208,7 +223,7 @@ export class BlerpcClient extends GeneratedClient {
         deviceId: this._peerAddress ?? undefined,
         pinIdentity: this.pinIdentity,
       });
-      // Flush any newly pinned key to disk (TOFU survives restarts).
+      // Flush any newly pinned key to storage (TOFU survives reloads).
       await knownKeys?.persist();
       console.log('E2E encryption established');
     } catch (e) {

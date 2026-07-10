@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bleRPC — Web Bluetooth Console</title>
+    <link rel="stylesheet" href="./design.css" />
+  </head>
+  <body>
+    <!-- App bar -->
+    <header class="appbar">
+      <span class="wordmark"><span class="ble">ble</span>RPC<span class="sub">Web Console</span></span>
+      <span id="statusdot" class="statusdot"><span class="dot"></span><span id="statuslabel">disconnected</span></span>
+    </header>
+
+    <main>
+      <p class="lead">
+        A browser central over the Web Bluetooth API. Connecting runs the timeout &amp; capabilities
+        negotiation and, if the peripheral advertises encryption, the X25519/Ed25519 key exchange
+        (TOFU-pinned). Chrome/Edge over HTTPS or localhost only.
+      </p>
+
+      <!-- Session -->
+      <div class="row">
+        <button id="connect" class="btn primary">Connect</button>
+        <button id="disconnect" class="btn" disabled>Disconnect</button>
+      </div>
+
+      <div class="card" id="session" style="display: none">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px">
+          <div style="width: 38px; height: 38px; border-radius: 9px; background: var(--bg-code); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--accent)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
+          </div>
+          <div style="flex: 1">
+            <div id="sess-name" style="font-weight: 600; font-size: 1.05rem">peripheral</div>
+            <div id="sess-badges" style="display: flex; gap: 6px; margin-top: 4px"></div>
+          </div>
+        </div>
+        <div class="kv"><span class="k">MTU</span><span class="v" id="sess-mtu">—</span></div>
+        <div class="kv"><span class="k">max request</span><span class="v" id="sess-maxreq">—</span></div>
+        <div class="kv"><span class="k">encryption</span><span class="v accent" id="sess-enc">—</span></div>
+      </div>
+
+      <!-- Echo -->
+      <p class="label">Echo</p>
+      <div class="row">
+        <input id="echo-msg" class="input" value="hello" />
+        <button id="echo" class="btn" disabled>Run echo</button>
+      </div>
+
+      <!-- Benchmarks -->
+      <p class="label">Benchmarks</p>
+      <div class="row">
+        <button id="bench" class="btn" disabled>Run benchmarks</button>
+        <span class="muted" style="color: var(--text-secondary); font-size: 0.85rem">throughput + latency (same suite as the mobile app)</span>
+      </div>
+
+      <!-- Output -->
+      <p class="label">Console</p>
+      <div id="log" class="console"></div>
+    </main>
+
+    <script src="./dist/blerpc-web.js"></script>
+    <script>
+      const { BlerpcClient } = BlerpcWeb;
+      const logEl = document.getElementById('log');
+      const statusDot = document.getElementById('statusdot');
+      const statusLabel = document.getElementById('statuslabel');
+      const connectBtn = document.getElementById('connect');
+      const disconnectBtn = document.getElementById('disconnect');
+      const echoBtn = document.getElementById('echo');
+      const echoMsg = document.getElementById('echo-msg');
+      const benchBtn = document.getElementById('bench');
+      const sessionCard = document.getElementById('session');
+
+      function status(state, label) {
+        statusDot.className = 'statusdot' + (state ? ' ' + state : '');
+        statusLabel.textContent = label;
+      }
+
+      // Append a console line, syntax-colored by prefix (matches the design system).
+      function log(...args) {
+        const text = args.join(' ');
+        const div = document.createElement('div');
+        if (text.startsWith('===')) div.className = 'head';
+        else if (text.startsWith('[BENCH]')) div.className = 'bench';
+        else if (/error/i.test(text)) div.className = 'err';
+        div.textContent = text;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      let client = null;
+
+      function showSession(cfg) {
+        document.getElementById('sess-name').textContent = 'blerpc peripheral';
+        document.getElementById('sess-mtu').textContent = cfg.mtu + ' bytes';
+        document.getElementById('sess-maxreq').textContent = cfg.maxReq + ' bytes';
+        document.getElementById('sess-enc').textContent = cfg.encrypted ? 'X25519 · Ed25519 · AES-128-GCM' : 'none';
+        const badges = document.getElementById('sess-badges');
+        badges.innerHTML =
+          '<span class="badge green">Connected</span>' +
+          (cfg.encrypted ? '<span class="badge blue">AES-128-GCM</span>' : '<span class="badge grey">unencrypted</span>');
+        sessionCard.style.display = '';
+      }
+
+      connectBtn.addEventListener('click', async () => {
+        try {
+          client = new BlerpcClient();
+          status('busy', 'requesting device…');
+          const devices = await client.scan(); // opens the browser chooser
+          if (devices.length === 0) { status('', 'disconnected'); return; }
+          status('busy', 'connecting…');
+          await client.connect(devices[0]);
+          status('online', client.isEncrypted ? 'connected · encrypted' : 'connected');
+          showSession({ mtu: client.mtu, maxReq: client.maxRequestPayloadSize, encrypted: client.isEncrypted });
+          log(`connected: encrypted=${client.isEncrypted}, mtu=${client.mtu}, maxReq=${client.maxRequestPayloadSize}`);
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+          echoBtn.disabled = false;
+          benchBtn.disabled = false;
+        } catch (e) {
+          status('', 'error');
+          log('connect error:', e.message || String(e));
+          // Release the GATT link so a failed connect doesn't hold the
+          // peripheral (a held peripheral stops advertising and blocks retries).
+          try { client?.disconnect(); } catch { /* ignore */ }
+          client = null;
+          sessionCard.style.display = 'none';
+        }
+      });
+
+      echoBtn.addEventListener('click', async () => {
+        try {
+          const resp = await client.echo({ message: echoMsg.value });
+          log(`echo -> ${JSON.stringify(resp.message)}`);
+        } catch (e) {
+          log('echo error:', e.message || String(e));
+        }
+      });
+
+      disconnectBtn.addEventListener('click', () => {
+        client?.disconnect();
+        client = null;
+        status('', 'disconnected');
+        sessionCard.style.display = 'none';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        echoBtn.disabled = true;
+        benchBtn.disabled = true;
+      });
+
+      // Throughput + latency benchmarks — the same suite as the mobile app
+      // (central_rn TestRunner). Runs against the connected peripheral.
+      async function runBenchmarks() {
+        log('');
+        log('=== Throughput Benchmarks ===');
+
+        {
+          const readSize = 8192, count = 10, totalBytes = readSize * count;
+          await client.flashRead({ address: 0, length: readSize });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) {
+            const resp = await client.flashRead({ address: 0, length: readSize });
+            if (resp.data.length !== readSize) log('  ! flash_read size mismatch');
+          }
+          const ms = performance.now() - start;
+          const kbps = totalBytes / 1024 / (ms / 1000);
+          log(`[BENCH] flash_read_throughput: ${kbps.toFixed(1)} KB/s (${totalBytes} bytes in ${ms.toFixed(0)}ms, ${(ms / count).toFixed(1)} ms/call)`);
+        }
+
+        {
+          const count = 20;
+          await client.flashRead({ address: 0, length: 1 });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.flashRead({ address: 0, length: 1 });
+          const ms = performance.now() - start;
+          log(`[BENCH] flash_read_overhead: ${(ms / count).toFixed(1)} ms/call (1 byte x ${count} in ${ms.toFixed(0)}ms)`);
+        }
+
+        {
+          const count = 50;
+          await client.echo({ message: 'x' });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.echo({ message: 'hello' });
+          const ms = performance.now() - start;
+          log(`[BENCH] echo_roundtrip: ${(ms / count).toFixed(1)} ms/call (${count} calls in ${ms.toFixed(0)}ms)`);
+        }
+
+        {
+          const writeSize = 200, count = 20, totalBytes = writeSize * count;
+          const testData = new Uint8Array(writeSize);
+          for (let i = 0; i < writeSize; i++) testData[i] = i % 256;
+          await client.dataWrite({ data: testData });
+          const start = performance.now();
+          for (let i = 0; i < count; i++) await client.dataWrite({ data: testData });
+          const ms = performance.now() - start;
+          const kbps = totalBytes / 1024 / (ms / 1000);
+          log(`[BENCH] data_write_throughput: ${kbps.toFixed(1)} KB/s (${totalBytes} bytes in ${ms.toFixed(0)}ms, ${(ms / count).toFixed(1)} ms/call)`);
+        }
+
+        {
+          const count = 20;
+          const start1 = performance.now();
+          const results = await client.counterStream({ count });
+          const e1 = performance.now() - start1;
+          if (results.length !== count) log('  ! stream count mismatch');
+          log(`[BENCH] counter_stream (P->C): ${count} items in ${e1.toFixed(0)}ms (${(e1 / count).toFixed(1)} ms/item)`);
+
+          const messages = Array.from({ length: count }, (_, i) => ({ seq: i, value: i * 10 }));
+          const start2 = performance.now();
+          const resp = await client.counterUpload(messages);
+          const e2 = performance.now() - start2;
+          if (resp.receivedCount !== count) log('  ! upload count mismatch');
+          log(`[BENCH] counter_upload (C->P): ${count} items in ${e2.toFixed(0)}ms (${(e2 / count).toFixed(1)} ms/item)`);
+        }
+
+        log('=== Benchmarks complete ===');
+      }
+
+      benchBtn.addEventListener('click', async () => {
+        benchBtn.disabled = true;
+        try {
+          await runBenchmarks();
+        } catch (e) {
+          log('benchmark error:', e.message || String(e));
+        } finally {
+          if (client) benchBtn.disabled = false;
+        }
+      });
+
+      if (!navigator.bluetooth) {
+        status('', 'Web Bluetooth unavailable');
+        connectBtn.disabled = true;
+        log('This browser has no Web Bluetooth. Use Chrome/Edge over HTTPS or localhost.');
+      }
+    </script>
+  </body>
+</html>

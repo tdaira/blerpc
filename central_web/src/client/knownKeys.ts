@@ -1,17 +1,17 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { KnownKeyStore } from '@blerpc/protocol-ts';
 
 // TOFU (Trust On First Use) store for peripheral Ed25519 identity keys.
 //
 // The pinning policy (trust on first use, reject a changed key) lives in the
-// protocol library (`tofuVerify`); this class only provides per-app persistence.
-// Backed by AsyncStorage (survives restarts). Because the library reads the
-// store synchronously during the key exchange, the map is loaded before the
-// exchange and persisted after it.
+// protocol library (`tofuVerify`); this class only provides per-origin
+// persistence. Backed by localStorage (survives reloads). The library reads
+// the store synchronously during the key exchange, so the map is loaded before
+// the exchange and persisted after it. The async load/persist wrappers mirror
+// the RN AsyncStorage store so BlerpcClient can stay identical across targets.
 
 const STORE_KEY = 'blerpc_known_keys';
 
-export class AsyncStorageKnownKeyStore implements KnownKeyStore {
+export class LocalStorageKnownKeyStore implements KnownKeyStore {
   private keys: Record<string, string>;
   private dirty = false;
 
@@ -20,15 +20,15 @@ export class AsyncStorageKnownKeyStore implements KnownKeyStore {
   }
 
   /** Load the store. Call before the key exchange. */
-  static async load(): Promise<AsyncStorageKnownKeyStore> {
+  static async load(): Promise<LocalStorageKnownKeyStore> {
     let keys: Record<string, string> = {};
     try {
-      const raw = await AsyncStorage.getItem(STORE_KEY);
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORE_KEY) : null;
       if (raw) keys = JSON.parse(raw) as Record<string, string>;
     } catch {
       // Best-effort load; an empty store just means everything is first-use.
     }
-    return new AsyncStorageKnownKeyStore(keys);
+    return new LocalStorageKnownKeyStore(keys);
   }
 
   get(deviceId: string): string | null {
@@ -40,11 +40,13 @@ export class AsyncStorageKnownKeyStore implements KnownKeyStore {
     this.dirty = true;
   }
 
-  /** Flush newly pinned keys to disk. Call after a successful key exchange. */
+  /** Flush newly pinned keys to storage. Call after a successful key exchange. */
   async persist(): Promise<void> {
     if (!this.dirty) return;
     try {
-      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(this.keys));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORE_KEY, JSON.stringify(this.keys));
+      }
       this.dirty = false;
     } catch {
       // Best-effort persistence; pinning still holds for the current session.
