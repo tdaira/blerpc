@@ -122,6 +122,11 @@
         } catch (e) {
           status('', 'error');
           log('connect error:', e.message || String(e));
+          // Release the GATT link so a failed connect doesn't hold the
+          // peripheral (a held peripheral stops advertising and blocks retries).
+          try { client?.disconnect(); } catch { /* ignore */ }
+          client = null;
+          sessionCard.style.display = 'none';
         }
       });
 
