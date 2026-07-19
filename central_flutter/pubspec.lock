@@ -21,10 +21,10 @@ packages:
     dependency: "direct main"
     description:
       name: blerpc_protocol
-      sha256: "6d896510497eb8b0e9ce811c76d829e4b3be6ded5f92118458b4973d97edc573"
+      sha256: c4fdbc2c50f3b72df86bc39588bda181fa8beeee5546f107b1b0490db22b7f70
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.0"
+    version: "0.8.0"
   bluez:
     dependency: transitive
     description:
