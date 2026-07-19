@@ -29,9 +29,66 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 WEST=/Library/Frameworks/Python.framework/Versions/3.13/bin/west
 ```
 
+## Encryption Keys
+
+Both firmware targets fail closed at build time: the build stops with a
+`BUILD_ASSERT` error unless the required key is configured. Keys are supplied
+through a git-ignored `keys.conf` overlay in each app directory — never
+commit real keys to the repository.
+
+### Peripheral (Ed25519 identity key)
+
+The peripheral signs the key exchange with its long-term Ed25519 identity
+key. Generate a random seed and configure it:
+
+```bash
+cp peripheral_fw/keys.conf.example peripheral_fw/keys.conf
+python3 -c "import os; print(os.urandom(32).hex())"
+```
+
+Set the generated value in `peripheral_fw/keys.conf`:
+
+```bash
+CONFIG_BLERPC_ED25519_PRIVATE_KEY="<64 hex chars from above>"
+```
+
+Keep this key stable across rebuilds: it is the device's identity, and
+central clients pin it (TOFU or build-time pin). Changing it makes existing
+clients reject the device as an impostor.
+
+### Central (pinned peripheral public key)
+
+The central pins the peripheral's Ed25519 identity **public** key at build
+time — this pin is what makes the handshake resistant to a
+man-in-the-middle. Derive the public key from the peripheral's seed
+(requires the Python `cryptography` package):
+
+```bash
+python3 - <<'EOF'
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
+seed = bytes.fromhex("<64 hex chars from peripheral keys.conf>")
+pub = Ed25519PrivateKey.from_private_bytes(seed).public_key()
+print(pub.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex())
+EOF
+```
+
+Create `central_fw/keys.conf` from the example and set the derived key:
+
+```bash
+cp central_fw/keys.conf.example central_fw/keys.conf
+# CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY="<64 hex chars printed above>"
+```
+
+> The EFR32xG22E peripheral build has encryption disabled
+> (`CONFIG_BLERPC_ENCRYPTION=n` in `boards/xg22\_ek2710a.conf`), so no key
+> is needed for that target.
+
 ## Building
 
-All build commands should be run from the project root (`blerpc/`).
+All build commands should be run from the project root (`blerpc/`). The
+`-DEXTRA_CONF_FILE=keys.conf` flag loads the key overlay created above
+(paths are resolved relative to the app directory).
 
 ### Peripheral Firmware
 
@@ -40,7 +97,7 @@ All build commands should be run from the project root (`blerpc/`).
 ```bash
 $WEST -z ~/ncs/zephyr build -d peripheral_fw/build \
   -b nrf54l15dk/nrf54l15/cpuapp peripheral_fw \
-  -- -DNCS_TOOLCHAIN_VERSION=NONE
+  -- -DNCS_TOOLCHAIN_VERSION=NONE -DEXTRA_CONF_FILE=keys.conf
 ```
 
 **EFR32xG22E EK:**
@@ -53,7 +110,8 @@ $WEST -z ~/ncs/zephyr build -d peripheral_fw/build_xg22 \
 
 > The `-DBOARD_ROOT` flag is required because the xg22\_ek2710a board
 > definition is in the project tree (`boards/silabs/xg22_ek2710a/`),
-> not in the nRF Connect SDK.
+> not in the nRF Connect SDK. Encryption is disabled on this board, so
+> `keys.conf` is not required.
 
 ### Central Firmware
 
@@ -62,7 +120,7 @@ $WEST -z ~/ncs/zephyr build -d peripheral_fw/build_xg22 \
 ```bash
 $WEST -z ~/ncs/zephyr build -d central_fw/build \
   -b nrf54l15dk/nrf54l15/cpuapp central_fw \
-  -- -DNCS_TOOLCHAIN_VERSION=NONE
+  -- -DNCS_TOOLCHAIN_VERSION=NONE -DEXTRA_CONF_FILE=keys.conf
 ```
 
 > Central firmware is only supported on nRF54L15 (EFR32xG22E does not
@@ -235,6 +293,7 @@ JLinkRTTLogger -Device NRF54L15_M33 -If SWD -Speed 4000 -RTTChannel 0 /tmp/rtt.l
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| Build fails with `BUILD_ASSERT` / "must be set" key error | `keys.conf` missing or not passed | Create `keys.conf` (see Encryption Keys) and add `-DEXTRA_CONF_FILE=keys.conf` |
 | `west flash` hangs or fails | SWD disabled on nRF54L15 | Enable via Board Configurator |
 | RTT shows no output | Board already finished tests | Reset board after starting RTT logger |
 | EFR32 build: RAM overflow | Feature too large for 32 KB | Reduce buffer sizes or disable logging |
