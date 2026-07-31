@@ -7,3 +7,9 @@
 # docs/firmware-guide.md for how to derive it from the peripheral's seed.
 
 CONFIG_BLERPC_PEER_ED25519_PUBLIC_KEY="0000000000000000000000000000000000000000000000000000000000000000"
+
+# Optional: only connect to an advertiser with this exact local name. The bleRPC
+# service UUID is not a unique filter — other products advertise it too — so
+# without a name the central connects to whichever bleRPC peripheral it sees
+# first. Leave unset (or empty) to accept any.
+#CONFIG_BLERPC_PEER_DEVICE_NAME="blerpc"
