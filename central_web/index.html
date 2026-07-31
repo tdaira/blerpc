@@ -66,6 +66,9 @@
       const logEl = document.getElementById('log');
       const statusDot = document.getElementById('statusdot');
       const statusLabel = document.getElementById('statuslabel');
+      const CONN_PARAM_SETTLE_MS = 5500;
+      let connectedAt = 0;
+
       const connectBtn = document.getElementById('connect');
       const disconnectBtn = document.getElementById('disconnect');
       const echoBtn = document.getElementById('echo');
@@ -112,6 +115,7 @@
           if (devices.length === 0) { status('', 'disconnected'); return; }
           status('busy', 'connecting…');
           await client.connect(devices[0]);
+          connectedAt = performance.now();
           status('online', client.isEncrypted ? 'connected · encrypted' : 'connected');
           showSession({ mtu: client.mtu, maxReq: client.maxRequestPayloadSize, encrypted: client.isEncrypted });
           log(`connected: encrypted=${client.isEncrypted}, mtu=${client.mtu}, maxReq=${client.maxRequestPayloadSize}`);
@@ -153,6 +157,14 @@
       // Throughput + latency benchmarks — the same suite as the mobile app
       // (central_rn TestRunner). Runs against the connected peripheral.
       async function runBenchmarks() {
+        // The peripheral only requests its preferred connection parameters
+        // CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up.
+        // Measuring before that lands reports the OS's initial interval instead.
+        const waitMs = CONN_PARAM_SETTLE_MS - (performance.now() - connectedAt);
+        if (waitMs > 0) {
+          log(`Waiting ${waitMs.toFixed(0)} ms for connection parameters to settle...`);
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
         log('');
         log('=== Throughput Benchmarks ===');
 

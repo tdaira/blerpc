@@ -617,6 +617,10 @@ int ble_service_notify(const uint8_t *data, size_t len)
     return bt_gatt_notify_cb(current_conn, &params);
 }
 
+/* Connection interval is in 1.25 ms units, supervision timeout in 10 ms units. */
+#define CONN_INT_MS_INT(units) ((units) * 125U / 100U)
+#define CONN_INT_MS_FRAC(units) ((units) * 125U % 100U)
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
     if (err) {
@@ -624,6 +628,13 @@ static void connected(struct bt_conn *conn, uint8_t err)
         return;
     }
     LOG_INF("Connected");
+
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) == 0) {
+        LOG_INF("Conn params (initial): interval %u (%u.%02u ms), latency %u, timeout %u ms",
+                info.le.interval, CONN_INT_MS_INT(info.le.interval),
+                CONN_INT_MS_FRAC(info.le.interval), info.le.latency, info.le.timeout * 10U);
+    }
     current_conn = bt_conn_ref(conn);
     container_assembler_init(&assembler);
     transaction_counter = 0;
@@ -669,9 +680,27 @@ int ble_service_start_advertising(void)
     return bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 }
 
+static bool le_param_req(struct bt_conn *conn, struct bt_le_conn_param *param)
+{
+    LOG_INF("Conn params requested: interval %u-%u (%u.%02u-%u.%02u ms), latency %u, timeout %u ms",
+            param->interval_min, param->interval_max, CONN_INT_MS_INT(param->interval_min),
+            CONN_INT_MS_FRAC(param->interval_min), CONN_INT_MS_INT(param->interval_max),
+            CONN_INT_MS_FRAC(param->interval_max), param->latency, param->timeout * 10U);
+    return true;
+}
+
+static void le_param_updated(struct bt_conn *conn, uint16_t interval, uint16_t latency,
+                             uint16_t timeout)
+{
+    LOG_INF("Conn params updated: interval %u (%u.%02u ms), latency %u, timeout %u ms", interval,
+            CONN_INT_MS_INT(interval), CONN_INT_MS_FRAC(interval), latency, timeout * 10U);
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
     .connected = connected,
     .disconnected = disconnected,
+    .le_param_req = le_param_req,
+    .le_param_updated = le_param_updated,
 };
 
 void ble_service_init(void)

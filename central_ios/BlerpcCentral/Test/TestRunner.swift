@@ -8,12 +8,14 @@ final class TestRunner: ObservableObject {
     private var passCount = 0
     private var failCount = 0
 
+    private static let connParamSettleMs = 5500
+
     private func log(_ msg: String) {
         print("[BlerpcTest] \(msg)")
         logs.append(msg)
     }
 
-    func runAll(iterations: Int = 1, device: ScannedDevice? = nil) async {
+    func runAll(iterations: Int = 1, device: ScannedDevice? = nil, deviceFilter: String? = nil) async {
         guard !running else { return }
         running = true
         logs = []
@@ -33,12 +35,33 @@ final class TestRunner: ObservableObject {
                     running = false
                     return
                 }
-                target = first
+                // Several products share the bleRPC service UUID, so the strongest
+                // advertiser is not necessarily the one under test.
+                if let filter = deviceFilter {
+                    guard let match = devices.first(where: {
+                        $0.name?.caseInsensitiveCompare(filter) == .orderedSame
+                            || $0.id.uuidString.caseInsensitiveCompare(filter) == .orderedSame
+                    }) else {
+                        let found = devices.map { $0.name ?? $0.id.uuidString }
+                        log("[ERROR] No device matching '\(filter)' (found: \(found))")
+                        running = false
+                        return
+                    }
+                    target = match
+                } else {
+                    target = first
+                }
             }
             log("Connecting to \(target.name ?? target.id.uuidString)...")
             try await client.connect(device: target)
             let mtu = client.mtu
             log("Connected. MTU=\(mtu), encrypted=\(client.isEncrypted)")
+
+            // The peripheral only requests its preferred connection parameters
+            // CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up.
+            // Measuring before that lands reports iOS's initial interval instead.
+            log("Waiting \(Self.connParamSettleMs) ms for connection parameters to settle...")
+            try await Task.sleep(nanoseconds: UInt64(Self.connParamSettleMs) * 1_000_000)
 
             for iter in 1...iterations {
                 if iterations > 1 {

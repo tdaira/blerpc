@@ -17,3 +17,13 @@ config BLERPC_PEER_ED25519_PUBLIC_KEY
 	  session with any peripheral whose identity key differs — this is what
 	  makes the handshake resistant to a man-in-the-middle. Store it in a
 	  git-ignored overlay file (e.g. keys.conf), like the peripheral's key.
+
+config BLERPC_PEER_DEVICE_NAME
+	string "Expected peripheral device name (empty = accept any)"
+	default ""
+	help
+	  When set, the central only connects to an advertiser whose complete or
+	  shortened local name matches this string exactly. The bleRPC service UUID
+	  alone is not a unique filter — other products advertise it too — so
+	  without a name the central connects to whichever matching peripheral it
+	  happens to see first. Leave empty to accept any bleRPC advertiser.

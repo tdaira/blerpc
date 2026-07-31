@@ -72,7 +72,22 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
     struct net_buf_simple_state state;
     net_buf_simple_save(ad, &state);
 
-    bool found = false;
+    /* The service UUID alone is not a unique filter — other products advertise it
+     * too — so CONFIG_BLERPC_PEER_DEVICE_NAME can narrow it further. The UUID and
+     * the name typically arrive in separate packets (either order: this firmware
+     * puts the UUID in ADV_IND and the name in SCAN_RSP, other peripherals do the
+     * reverse), so remember the address that advertised the UUID and let a later
+     * packet from that same address supply the name. The cache holds one address,
+     * so with several bleRPC peripherals in range a match can take an extra
+     * advertising cycle — scanning is continuous, so it still converges. */
+    static bt_addr_le_t uuid_addr;
+    static bool uuid_addr_valid;
+
+    const char *want_name = CONFIG_BLERPC_PEER_DEVICE_NAME;
+    const size_t want_name_len = sizeof(CONFIG_BLERPC_PEER_DEVICE_NAME) - 1;
+
+    bool has_uuid = false;
+    bool has_name = false;
 
     while (ad->len > 1) {
         uint8_t field_len = net_buf_simple_pull_u8(ad);
@@ -84,8 +99,11 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 
         if ((field_type == BT_DATA_UUID128_ALL || field_type == BT_DATA_UUID128_SOME) &&
             field_len == 16 && memcmp(ad->data, blerpc_svc_uuid.val, 16) == 0) {
-            found = true;
-            break;
+            has_uuid = true;
+        } else if ((field_type == BT_DATA_NAME_COMPLETE || field_type == BT_DATA_NAME_SHORTENED) &&
+                   want_name_len != 0 && field_len == want_name_len &&
+                   memcmp(ad->data, want_name, want_name_len) == 0) {
+            has_name = true;
         }
 
         net_buf_simple_pull(ad, field_len);
@@ -93,8 +111,19 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 
     net_buf_simple_restore(ad, &state);
 
-    if (!found) {
-        return;
+    if (want_name_len == 0) {
+        if (!has_uuid) {
+            return;
+        }
+    } else {
+        if (has_uuid) {
+            bt_addr_le_copy(&uuid_addr, addr);
+            uuid_addr_valid = true;
+        }
+        bool uuid_ok = has_uuid || (uuid_addr_valid && bt_addr_le_eq(&uuid_addr, addr));
+        if (!uuid_ok || !has_name) {
+            return;
+        }
     }
 
     char addr_str[BT_ADDR_LE_STR_LEN];
@@ -110,7 +139,11 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
     struct bt_conn_le_create_param create_param = BT_CONN_LE_CREATE_PARAM_INIT(
         BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, BT_GAP_SCAN_FAST_WINDOW);
 
-    struct bt_le_conn_param conn_param = BT_LE_CONN_PARAM_INIT(12, 24, 0, 100);
+    /* Pin the interval to 15 ms (12 * 1.25 ms) rather than offering a 15-30 ms
+     * window: a central given a range picks the power-efficient end, so a window
+     * would run the link at 30 ms until the peripheral's own parameter update
+     * request arrives 5 s later. */
+    struct bt_le_conn_param conn_param = BT_LE_CONN_PARAM_INIT(12, 12, 0, 100);
 
     err = bt_conn_le_create(addr, &create_param, &conn_param, &current_conn);
     if (err) {
@@ -337,6 +370,10 @@ static uint8_t notify_handler(struct bt_conn *conn, struct bt_gatt_subscribe_par
 
 /* ── Connection callbacks ────────────────────────────────────────────── */
 
+/* Connection interval is in 1.25 ms units, supervision timeout in 10 ms units. */
+#define CONN_INT_MS_INT(units) ((units) * 125U / 100U)
+#define CONN_INT_MS_FRAC(units) ((units) * 125U % 100U)
+
 static void connected_cb(struct bt_conn *conn, uint8_t err)
 {
     if (err) {
@@ -350,6 +387,14 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
     }
 
     LOG_INF("Connected");
+
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) == 0) {
+        LOG_INF("Conn params (initial): interval %u (%u.%02u ms), latency %u, timeout %u ms",
+                info.le.interval, CONN_INT_MS_INT(info.le.interval),
+                CONN_INT_MS_FRAC(info.le.interval), info.le.latency, info.le.timeout * 10U);
+    }
+
     k_sem_give(&connect_sem);
 }
 
@@ -366,9 +411,27 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 #endif
 }
 
+static bool le_param_req_cb(struct bt_conn *conn, struct bt_le_conn_param *param)
+{
+    LOG_INF("Conn params requested: interval %u-%u (%u.%02u-%u.%02u ms), latency %u, timeout %u ms",
+            param->interval_min, param->interval_max, CONN_INT_MS_INT(param->interval_min),
+            CONN_INT_MS_FRAC(param->interval_min), CONN_INT_MS_INT(param->interval_max),
+            CONN_INT_MS_FRAC(param->interval_max), param->latency, param->timeout * 10U);
+    return true;
+}
+
+static void le_param_updated_cb(struct bt_conn *conn, uint16_t interval, uint16_t latency,
+                                uint16_t timeout)
+{
+    LOG_INF("Conn params updated: interval %u (%u.%02u ms), latency %u, timeout %u ms", interval,
+            CONN_INT_MS_INT(interval), CONN_INT_MS_FRAC(interval), latency, timeout * 10U);
+}
+
 BT_CONN_CB_DEFINE(conn_callbacks) = {
     .connected = connected_cb,
     .disconnected = disconnected_cb,
+    .le_param_req = le_param_req_cb,
+    .le_param_updated = le_param_updated_cb,
 };
 
 /* ── MTU exchange ────────────────────────────────────────────────────── */

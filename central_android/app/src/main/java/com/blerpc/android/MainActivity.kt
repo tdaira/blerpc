@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var autoRunPending = false
     private var autoRunIterations = 1
+    private var autoRunDeviceFilter: String? = null
 
     private val permissionLauncher =
         registerForActivityResult(
@@ -40,10 +41,11 @@ class MainActivity : ComponentActivity() {
         testRunner = TestRunner(applicationContext)
         requestPermissions()
 
-        // Check if launched with --es action run_tests --ei iterations N
+        // Check if launched with --es action run_tests --ei iterations N [--es device NAME_OR_ADDR]
         if (intent?.getStringExtra("action") == "run_tests") {
             autoRunPending = true
             autoRunIterations = intent.getIntExtra("iterations", 1)
+            autoRunDeviceFilter = intent.getStringExtra("device")
         }
 
         setContent {
@@ -58,11 +60,12 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(autoRunPending) {
                     if (autoRunPending) {
                         val iters = autoRunIterations
+                        val filter = autoRunDeviceFilter
                         autoRunPending = false
                         isRunning = true
                         scope.launch {
                             try {
-                                testRunner.runAll(iters)
+                                testRunner.runAll(iters, deviceFilter = filter)
                             } finally {
                                 isRunning = false
                             }
@@ -112,6 +115,7 @@ class MainActivity : ComponentActivity() {
         if (intent?.getStringExtra("action") == "run_tests") {
             autoRunPending = true
             autoRunIterations = intent.getIntExtra("iterations", 1)
+            autoRunDeviceFilter = intent.getStringExtra("device")
         }
     }
 

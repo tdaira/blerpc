@@ -6,6 +6,11 @@ import '../proto/blerpc.pb.dart';
 
 typedef LogCallback = void Function(String message);
 
+/// The peripheral only requests its preferred connection parameters
+/// CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up. Measuring
+/// before that lands reports the OS's initial interval, not the negotiated one.
+const Duration connParamSettleDelay = Duration(milliseconds: 5500);
+
 class TestRunner {
   final LogCallback _log;
   bool _running = false;
@@ -19,6 +24,7 @@ class TestRunner {
   Future<void> runAll({
     int iterations = 1,
     ScannedDevice? device,
+    String? deviceFilter,
   }) async {
     if (_running) return;
     _running = true;
@@ -38,11 +44,32 @@ class TestRunner {
           _running = false;
           return;
         }
-        target = devices.first;
+        // Several products share the bleRPC service UUID, so the strongest
+        // advertiser is not necessarily the device under test.
+        if (deviceFilter != null) {
+          final match = devices.where(
+            (d) =>
+                d.name?.toLowerCase() == deviceFilter.toLowerCase() ||
+                d.address.toLowerCase() == deviceFilter.toLowerCase(),
+          );
+          if (match.isEmpty) {
+            _log("[ERROR] No device matching '$deviceFilter' "
+                '(found: ${devices.map((d) => d.name ?? d.address).toList()})');
+            _running = false;
+            return;
+          }
+          target = match.first;
+        } else {
+          target = devices.first;
+        }
       }
       _log('Connecting to ${target.name ?? target.address}...');
       await client.connect(target);
       _log('Connected. MTU=${client.mtu}, encrypted=${client.isEncrypted}');
+
+      _log('Waiting ${connParamSettleDelay.inMilliseconds} ms for connection '
+          'parameters to settle...');
+      await Future<void>.delayed(connParamSettleDelay);
 
       for (var iter = 1; iter <= iterations; iter++) {
         if (iterations > 1) _log('--- Iteration $iter/$iterations ---');

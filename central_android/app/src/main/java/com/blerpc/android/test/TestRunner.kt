@@ -26,6 +26,7 @@ class TestRunner(private val context: Context) {
     suspend fun runAll(
         iterations: Int = 1,
         device: ScannedDevice? = null,
+        deviceFilter: String? = null,
     ) {
         if (running) return
         running = true
@@ -46,11 +47,31 @@ class TestRunner(private val context: Context) {
                     running = false
                     return
                 }
-                target = devices.first()
+                // Several products share the bleRPC service UUID, so the strongest
+                // advertiser is not necessarily the one under test.
+                val match =
+                    deviceFilter?.let { f ->
+                        devices.firstOrNull {
+                            it.name?.equals(f, ignoreCase = true) == true ||
+                                it.address.equals(f, ignoreCase = true)
+                        }
+                    }
+                if (deviceFilter != null && match == null) {
+                    log("[ERROR] No device matching '$deviceFilter' (found: ${devices.map { it.name ?: it.address }})")
+                    running = false
+                    return
+                }
+                target = match ?: devices.first()
             }
             log("Connecting to ${target.name ?: target.address}...")
             client.connect(target)
             log("Connected. MTU=${client.mtu}, encrypted=${client.isEncrypted}")
+
+            // The peripheral only requests its preferred connection parameters
+            // CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up.
+            // Measuring before that lands reports Android's initial interval instead.
+            log("Waiting $CONN_PARAM_SETTLE_MS ms for connection parameters to settle...")
+            delay(CONN_PARAM_SETTLE_MS)
 
             for (iter in 1..iterations) {
                 if (iterations > 1) {
@@ -284,5 +305,9 @@ class TestRunner(private val context: Context) {
             delay(500)
             client.transport.drainNotifications()
         }
+    }
+
+    private companion object {
+        const val CONN_PARAM_SETTLE_MS = 5500L
     }
 }
