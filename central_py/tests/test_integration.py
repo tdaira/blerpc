@@ -4,6 +4,7 @@ Run with: pytest tests/test_integration.py -v -s
 Requires an nRF54L15 DK running the blerpc peripheral firmware.
 """
 
+import asyncio
 import time
 
 import pytest
@@ -17,6 +18,15 @@ pytestmark = pytest.mark.skipif(
     reason="bleak not available",
 )
 
+# The peripheral only requests its preferred connection parameters
+# CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up. Measuring before
+# that lands reports the central's initial interval, not the negotiated one.
+CONN_PARAM_SETTLE_S = 5.5
+
+# Several products share the bleRPC service UUID, so the strongest advertiser is not
+# necessarily the device under test.
+TARGET_NAME = "blerpc"
+
 
 @pytest_asyncio.fixture
 async def client():
@@ -25,8 +35,10 @@ async def client():
         devices = await c.scan(timeout=15.0)
         if not devices:
             pytest.skip("No blerpc peripheral found")
-        await c.connect(devices[0])
+        target = next((d for d in devices if d.name == TARGET_NAME), devices[0])
+        await c.connect(target)
         c._timeout_s = 5.0  # Use generous timeout for integration tests
+        await asyncio.sleep(CONN_PARAM_SETTLE_S)
         yield c
     except Exception:
         pytest.skip("Could not connect to blerpc peripheral")

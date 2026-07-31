@@ -3,6 +3,11 @@ import { BlerpcClient } from '../client/BlerpcClient';
 
 export type LogCallback = (message: string) => void;
 
+// The peripheral only requests its preferred connection parameters
+// CONFIG_BT_CONN_PARAM_UPDATE_TIMEOUT (5 s) after the link comes up. Measuring
+// before that lands reports the OS's initial interval, not the negotiated one.
+const CONN_PARAM_SETTLE_MS = 5500;
+
 export class TestRunner {
   private readonly _log: LogCallback;
   private _running = false;
@@ -18,7 +23,12 @@ export class TestRunner {
   }
 
   async runAll(
-    options: { iterations?: number; device?: ScannedDevice; client?: BlerpcClient } = {},
+    options: {
+      iterations?: number;
+      device?: ScannedDevice;
+      client?: BlerpcClient;
+      deviceFilter?: string;
+    } = {},
   ): Promise<void> {
     if (this._running) return;
     this._running = true;
@@ -40,11 +50,32 @@ export class TestRunner {
           this._running = false;
           return;
         }
-        target = devices[0];
+        // Several products share the bleRPC service UUID, so the strongest
+        // advertiser is not necessarily the device under test.
+        const filter = options.deviceFilter;
+        if (filter !== undefined) {
+          const match = devices.find(
+            (d) =>
+              d.name?.toLowerCase() === filter.toLowerCase() ||
+              d.address.toLowerCase() === filter.toLowerCase(),
+          );
+          if (!match) {
+            const found = devices.map((d) => d.name ?? d.address);
+            this._log(`[ERROR] No device matching '${filter}' (found: ${found.join(', ')})`);
+            this._running = false;
+            return;
+          }
+          target = match;
+        } else {
+          target = devices[0];
+        }
       }
       this._log(`Connecting to ${target.name ?? target.address}...`);
       await client.connect(target);
       this._log(`Connected. MTU=${client.mtu}, encrypted=${client.isEncrypted}`);
+
+      this._log(`Waiting ${CONN_PARAM_SETTLE_MS} ms for connection parameters to settle...`);
+      await new Promise((resolve) => setTimeout(resolve, CONN_PARAM_SETTLE_MS));
 
       for (let iter = 1; iter <= iterations; iter++) {
         if (iterations > 1) this._log(`--- Iteration ${iter}/${iterations} ---`);
