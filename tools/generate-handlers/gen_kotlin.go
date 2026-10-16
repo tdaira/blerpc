@@ -53,8 +53,7 @@ func generateKotlinClient(commands []Command, streaming map[string]string, pkg s
 		b.WriteString(fmt.Sprintf("    open suspend fun %s(%s): %s {\n", methodName, paramsStr, respCls))
 		b.WriteString(fmt.Sprintf("        val req = %s.newBuilder()\n", reqCls))
 		for _, f := range cmd.RequestFields {
-			setter := kotlinSetterName(f.Name)
-			b.WriteString(fmt.Sprintf("            .%s(%s)\n", setter, f.Name))
+			b.WriteString("            " + kotlinBuilderCall(f, f.Name) + "\n")
 		}
 		b.WriteString("            .build()\n")
 		b.WriteString(fmt.Sprintf("        val respData = call(\"%s\", req.toByteArray())\n", cmd.Snake))
@@ -87,8 +86,7 @@ func generateKotlinClient(commands []Command, streaming map[string]string, pkg s
 			b.WriteString(fmt.Sprintf("    open suspend fun %s(%s): List<%s> {\n", methodName, paramsStr, respCls))
 			b.WriteString(fmt.Sprintf("        val req = %s.newBuilder()\n", reqCls))
 			for _, f := range cmd.RequestFields {
-				setter := kotlinSetterName(f.Name)
-				b.WriteString(fmt.Sprintf("            .%s(%s)\n", setter, f.Name))
+				b.WriteString("            " + kotlinBuilderCall(f, f.Name) + "\n")
 			}
 			b.WriteString("            .build()\n")
 			b.WriteString(fmt.Sprintf("        val responses = streamReceive(\"%s\", req.toByteArray())\n", cmd.Snake))

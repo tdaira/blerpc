@@ -49,25 +49,30 @@ func TestToLowerCamel(t *testing.T) {
 	}
 }
 
-func TestKotlinSetterName(t *testing.T) {
+func TestKotlinBuilderCall(t *testing.T) {
 	tests := []struct {
-		input string
+		field Field
 		want  string
 	}{
-		{"message", "setMessage"},
-		{"received_count", "setReceivedCount"},
-		{"address", "setAddress"},
+		{Field{Type: "string", Name: "message"}, ".setMessage(v)"},
+		{Field{Type: "uint32", Name: "received_count"}, ".setReceivedCount(v)"},
+		{Field{Type: "Address", Name: "address", IsMessage: true}, ".setAddress(v)"},
+		{Field{Type: "Status", Name: "status", IsEnum: true}, ".setStatusValue(v)"},
+		{Field{Type: "uint32", Name: "ids", IsRepeated: true}, ".addAllIds(v)"},
+		{Field{Type: "Status", Name: "statuses", IsEnum: true, IsRepeated: true}, ".addAllStatusesValue(v)"},
+		{Field{Name: "labels", IsMap: true, KeyType: "string", ValueType: "string"}, ".putAllLabels(v)"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := kotlinSetterName(tt.input)
-			if got != tt.want {
-				t.Errorf("kotlinSetterName(%q) = %q, want %q", tt.input, got, tt.want)
+		t.Run(tt.field.Name, func(t *testing.T) {
+			if got := kotlinBuilderCall(tt.field, "v"); got != tt.want {
+				t.Errorf("kotlinBuilderCall(%q) = %q, want %q", tt.field.Name, got, tt.want)
 			}
 		})
 	}
 }
 
+// The expected names are what protoc-gen-swift 1.39.0 generates for these
+// fields (and for package my_app.v1).
 func TestSwiftPropertyName(t *testing.T) {
 	tests := []struct {
 		input string
@@ -76,6 +81,17 @@ func TestSwiftPropertyName(t *testing.T) {
 		{"message", "message"},
 		{"received_count", "receivedCount"},
 		{"address", "address"},
+		{"device_id", "deviceID"},
+		{"id", "id"},
+		{"image_url", "imageURL"},
+		{"http_status_code", "httpStatusCode"},
+		{"user_id_list", "userIDList"},
+		{"field2", "field2"},
+		{"v2_api", "v2Api"},
+		{"foo__bar", "foo_Bar"},
+		{"camelCase", "camelCase"},
+		{"ABC_def", "abcDef"},
+		{"trailing_", "trailing_"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -84,6 +100,30 @@ func TestSwiftPropertyName(t *testing.T) {
 				t.Errorf("swiftPropertyName(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSwiftTypePrefix(t *testing.T) {
+	tests := map[string]string{
+		"blerpc":    "Blerpc_",
+		"sensorhub": "Sensorhub_",
+		"my_app.v1": "MyApp_V1_",
+		"":          "",
+	}
+	for pkg, want := range tests {
+		if got := swiftTypePrefix(pkg); got != want {
+			t.Errorf("swiftTypePrefix(%q) = %q, want %q", pkg, got, want)
+		}
+	}
+}
+
+func TestDartAndTsPropertyNamesKeepId(t *testing.T) {
+	// protoc-gen-dart and protobuf.js do not upper-case abbreviations.
+	if got := dartPropertyName("device_id"); got != "deviceId" {
+		t.Errorf("dartPropertyName = %q", got)
+	}
+	if got := tsPropertyName("device_id"); got != "deviceId" {
+		t.Errorf("tsPropertyName = %q", got)
 	}
 }
 

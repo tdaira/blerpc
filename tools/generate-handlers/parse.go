@@ -61,6 +61,8 @@ func parseProtoReader(r io.Reader) (*ProtoFile, error) {
 	// Collect all enums (top-level + nested inside messages)
 	enumSet := make(map[string]bool)
 	msgSet := make(map[string]bool)
+	// Package-relative paths of every enum / message ("Outer.Inner").
+	typePaths := make(map[string]bool)
 
 	var enums []Enum
 	for _, item := range proto.ProtoBody {
@@ -68,6 +70,7 @@ func parseProtoReader(r io.Reader) (*ProtoFile, error) {
 			en := collectEnums(e)
 			enums = append(enums, en)
 			enumSet[en.Name] = true
+			typePaths[en.Name] = true
 		}
 	}
 
@@ -78,16 +81,45 @@ func parseProtoReader(r io.Reader) (*ProtoFile, error) {
 			continue
 		}
 		msgSet[msg.MessageName] = true
+		typePaths[msg.MessageName] = true
 		for _, body := range msg.MessageBody {
 			if e, ok := body.(*parser.Enum); ok {
 				en := collectEnums(e)
 				enums = append(enums, en)
 				enumSet[en.Name] = true
+				typePaths[msg.MessageName+"."+en.Name] = true
 			}
 			if nested, ok := body.(*parser.Message); ok {
 				msgSet[nested.MessageName] = true
+				typePaths[msg.MessageName+"."+nested.MessageName] = true
 			}
 		}
+	}
+
+	// typeField fills the type information of field f declared in message
+	// scope: whether its type names an enum or a message, and the type's
+	// package-relative path. A bare name resolves in the enclosing message
+	// first, as protobuf scoping does.
+	typeField := func(f Field, scope string) Field {
+		t := strings.TrimPrefix(f.Type, ".")
+		if pkgName != "" {
+			t = strings.TrimPrefix(t, pkgName+".")
+		}
+		name := t[strings.LastIndex(t, ".")+1:]
+		f.IsEnum = enumSet[name]
+		f.IsMessage = msgSet[name]
+		if !f.IsEnum && !f.IsMessage {
+			return f
+		}
+		switch {
+		case strings.Contains(t, "."):
+			f.TypePath = t
+		case typePaths[scope+"."+t]:
+			f.TypePath = scope + "." + t
+		default:
+			f.TypePath = t
+		}
+		return f
 	}
 
 	var messages []Message
@@ -102,14 +134,12 @@ func parseProtoReader(r io.Reader) (*ProtoFile, error) {
 			case *parser.Field:
 				num := 0
 				_, _ = fmt.Sscanf(f.FieldNumber, "%d", &num)
-				m.Fields = append(m.Fields, Field{
+				m.Fields = append(m.Fields, typeField(Field{
 					Type:       f.Type,
 					Name:       f.FieldName,
 					Number:     num,
-					IsEnum:     enumSet[f.Type],
 					IsRepeated: f.IsRepeated,
-					IsMessage:  msgSet[f.Type],
-				})
+				}, msg.MessageName))
 			case *parser.MapField:
 				num := 0
 				_, _ = fmt.Sscanf(f.FieldNumber, "%d", &num)
@@ -125,13 +155,11 @@ func parseProtoReader(r io.Reader) (*ProtoFile, error) {
 				for _, of := range f.OneofFields {
 					num := 0
 					_, _ = fmt.Sscanf(of.FieldNumber, "%d", &num)
-					field := Field{
-						Type:      of.Type,
-						Name:      of.FieldName,
-						Number:    num,
-						IsEnum:    enumSet[of.Type],
-						IsMessage: msgSet[of.Type],
-					}
+					field := typeField(Field{
+						Type:   of.Type,
+						Name:   of.FieldName,
+						Number: num,
+					}, msg.MessageName)
 					og.Fields = append(og.Fields, field)
 					// Also add oneof fields to the message's flat field list
 					m.Fields = append(m.Fields, field)
