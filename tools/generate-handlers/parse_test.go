@@ -821,3 +821,69 @@ func TestDiscoverCommands_Oneof(t *testing.T) {
 		t.Fatalf("expected 2 request fields, got %d", len(cmd.RequestFields))
 	}
 }
+
+const typePathProto = `
+syntax = "proto3";
+package app;
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_ON = 1;
+}
+
+message Outer {
+  enum Level {
+    LEVEL_LOW = 0;
+  }
+  message Inner {
+    uint32 x = 1;
+  }
+}
+
+message SetRequest {
+  enum Level {
+    LEVEL_DEFAULT = 0;
+  }
+  Mode mode = 1;
+  Level level = 2;
+  Outer.Level outer_level = 3;
+  .app.Outer.Inner inner = 4;
+  app.Mode qualified = 5;
+  sint64 offset = 6;
+}
+`
+
+func TestParseProtoReader_TypePath(t *testing.T) {
+	pf, err := parseProtoReader(strings.NewReader(typePathProto))
+	if err != nil {
+		t.Fatalf("parseProtoReader: %v", err)
+	}
+	var req *Message
+	for i := range pf.Messages {
+		if pf.Messages[i].Name == "SetRequest" {
+			req = &pf.Messages[i]
+		}
+	}
+	if req == nil {
+		t.Fatal("SetRequest not parsed")
+	}
+	want := []struct {
+		name          string
+		path          string
+		isEnum, isMsg bool
+	}{
+		{"mode", "Mode", true, false},
+		{"level", "SetRequest.Level", true, false},  // resolved in the message's scope
+		{"outer_level", "Outer.Level", true, false}, // dotted reference
+		{"inner", "Outer.Inner", false, true},       // fully qualified reference
+		{"qualified", "Mode", true, false},          // package-qualified reference
+		{"offset", "", false, false},
+	}
+	for i, w := range want {
+		f := req.Fields[i]
+		if f.Name != w.name || f.TypePath != w.path || f.IsEnum != w.isEnum || f.IsMessage != w.isMsg {
+			t.Errorf("field %d = {%s path=%q enum=%v msg=%v}, want {%s path=%q enum=%v msg=%v}",
+				i, f.Name, f.TypePath, f.IsEnum, f.IsMessage, w.name, w.path, w.isEnum, w.isMsg)
+		}
+	}
+}

@@ -29,6 +29,10 @@ type Field struct {
 	IsMap      bool
 	KeyType    string
 	ValueType  string
+	// TypePath is the package-relative path of an enum or message type:
+	// "Status", or "Outer.Inner" for a type nested in message Outer. Empty
+	// for scalars and maps.
+	TypePath string
 }
 
 // Message represents a protobuf message.
