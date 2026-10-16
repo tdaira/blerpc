@@ -97,6 +97,38 @@ func TestGenerateKotlinClient_Enum(t *testing.T) {
 	}
 }
 
+// Enum request fields are set by number (setXValue), repeated and map fields
+// through the protobuf-java bulk builder methods.
+func TestGenerateKotlinClient_BuilderCalls(t *testing.T) {
+	cmd := Command{
+		Camel:       "SetMode",
+		Snake:       "set_mode",
+		RequestMsg:  "SetModeRequest",
+		ResponseMsg: "SetModeResponse",
+		RequestFields: []Field{
+			{Type: "Mode", Name: "mode", Number: 1, IsEnum: true, TypePath: "Mode"},
+			{Type: "uint32", Name: "ids", Number: 2, IsRepeated: true},
+			{Name: "labels", Number: 3, IsMap: true, KeyType: "string", ValueType: "string"},
+			{Type: "sint64", Name: "offset_us", Number: 4},
+		},
+	}
+	out := generateKotlinClient([]Command{cmd}, nil, "blerpc")
+
+	mustContain := []string{
+		"mode: Int = 0",
+		"offset_us: Long = 0L",
+		".setModeValue(mode)",
+		".addAllIds(ids)",
+		".putAllLabels(labels)",
+		".setOffsetUs(offset_us)",
+	}
+	for _, s := range mustContain {
+		if !strings.Contains(out, s) {
+			t.Errorf("Kotlin client missing %q\nGot:\n%s", s, out)
+		}
+	}
+}
+
 func TestGenerateKotlinClient_StreamP2C(t *testing.T) {
 	cmds := []Command{streamP2CCommand()}
 	streaming := map[string]string{"counter_stream": "p2c"}
